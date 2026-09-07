@@ -4,6 +4,7 @@ import {
   CheckCircle2, Bell, Users, ShieldCheck, Flame, X, Send
 } from 'lucide-react';
 import { campusStore, CampusNotification } from '../../../services/campusStore';
+import CCTVAnomalyDetector from '../../safety/CCTVAnomalyDetector';
 
 export default function AdminEmergencySecurity() {
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -106,6 +107,9 @@ export default function AdminEmergencySecurity() {
           </button>
         </div>
       )}
+
+      {/* Live AI Vision CCTV Anomaly Hub */}
+      <CCTVAnomalyDetector />
 
       {/* Grid: Dispatch Form & Security Contacts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

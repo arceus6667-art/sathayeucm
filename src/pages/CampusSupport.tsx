@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   HelpCircle, Wrench, PackageSearch, Plus, MapPin, 
   Clock, CheckCircle2, AlertTriangle, Sparkles, Filter, 
-  FileText, ShieldCheck, ChevronRight, X
+  FileText, ShieldCheck, ChevronRight, X, Lock, LogIn, ArrowRight
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SmartCampusStore } from '../smartCampusStore';
@@ -15,6 +15,41 @@ export function CampusSupport() {
   const [activeTab, setActiveTab] = useState<'maintenance' | 'lostfound'>('maintenance');
   const [tickets, setTickets] = useState<CampusTicket[]>([]);
   const [lostFound, setLostFound] = useState<LostFoundItem[]>([]);
+
+  // If not authenticated, require login
+  if (!currentUser) {
+    return (
+      <div className="min-h-[75vh] bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white max-w-md w-full rounded-2xl shadow-xl border-t-4 border-[#003366] p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-blue-50 text-[#003366] rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <Lock size={30} />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-yellow-700 bg-yellow-100 border border-yellow-300 px-3 py-1 rounded-full uppercase tracking-wider">
+              Authentication Required
+            </span>
+            <h2 className="text-2xl font-black text-[#003366] mt-3">
+              Campus Support & Lost-and-Found
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
+              This module is available only for authenticated Sathaye College students and staff. Please sign in to submit maintenance tickets or claim lost items.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => navigate('/login?redirect=/support')}
+              className="w-full py-3.5 bg-[#003366] hover:bg-blue-800 text-white font-black text-xs sm:text-sm uppercase tracking-wider rounded-xl shadow-md flex items-center justify-center space-x-2 transition-all"
+            >
+              <LogIn size={18} />
+              <span>Sign In to Access Support</span>
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Issue Reporting Form State
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);

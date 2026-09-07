@@ -12,6 +12,28 @@ export default function SafetySOSModal({ isOpen, onClose }: SafetySOSModalProps)
   const [countdown, setCountdown] = useState<number | null>(null);
   const [dispatched, setDispatched] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState('Room 204 (Main Building, 2nd Floor)');
+  const [geoCoordinates, setGeoCoordinates] = useState<string | null>('19.1028° N, 72.8459° E (Sathaye Campus)');
+  const [isLocating, setIsLocating] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && navigator.geolocation) {
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude.toFixed(4);
+          const lng = pos.coords.longitude.toFixed(4);
+          setGeoCoordinates(`${lat}° N, ${lng}° E`);
+          setIsLocating(false);
+        },
+        () => {
+          // Default to Sathaye College Vile Parle coordinates
+          setGeoCoordinates('19.1028° N, 72.8459° E (Sathaye Vile Parle East)');
+          setIsLocating(false);
+        },
+        { timeout: 5000 }
+      );
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -20,16 +42,16 @@ export default function SafetySOSModal({ isOpen, onClose }: SafetySOSModalProps)
     } else if (countdown === 0) {
       setDispatched(true);
       setCountdown(null);
-      // Register in campus notifications
+      // Register in campus notifications with exact geo-coordinates
       campusStore.addNotification({
-        title: 'EMERGENCY SOS DISPATCHED',
-        message: `Security & Medical team alerted for location: ${selectedLocation}`,
+        title: '🚨 EMERGENCY SOS DISPATCHED WITH GPS',
+        message: `Security & Medical team alerted! Location: ${selectedLocation} | Coordinates: ${geoCoordinates || '19.1028° N, 72.8459° E'}`,
         type: 'emergency',
         targetRole: 'ALL'
       });
     }
     return () => clearTimeout(timer);
-  }, [countdown, selectedLocation]);
+  }, [countdown, selectedLocation, geoCoordinates]);
 
   if (!isOpen) return null;
 
@@ -108,9 +130,16 @@ export default function SafetySOSModal({ isOpen, onClose }: SafetySOSModalProps)
                   <AlertTriangle size={24} />
                   <span>TRIGGER CAMPUS SOS</span>
                 </button>
-                <div className="flex items-center justify-center text-xs text-gray-500 space-x-1">
-                  <MapPin size={14} className="text-red-500" />
-                  <span>Current: <strong>{selectedLocation}</strong></span>
+                <div className="flex flex-col items-center justify-center text-xs text-gray-500 space-y-1">
+                  <div className="flex items-center space-x-1">
+                    <MapPin size={14} className="text-red-500" />
+                    <span>Current: <strong>{selectedLocation}</strong></span>
+                  </div>
+                  {geoCoordinates && (
+                    <div className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      🛰️ GPS: {geoCoordinates}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

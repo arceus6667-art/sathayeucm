@@ -3,16 +3,16 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   User, LogOut, Bell, ChevronRight, Activity, 
   MapPin, Coffee, BookOpen, ShieldAlert, Wrench, Calendar, Sparkles, RefreshCw,
-  ShieldCheck, CheckCircle2, Lock
+  ShieldCheck, CheckCircle2, Lock, GraduationCap, BookMarked, Building2, Award, Cpu
 } from 'lucide-react';
-import { campusStore, UserRole, CampusUser } from '../services/campusStore';
+import { campusStore, UserRole, CampusUser, DEMO_ACCOUNTS } from '../services/campusStore';
 import { SmartCampusStore } from '../smartCampusStore';
-import { logoutUser } from '../services/firebase';
 import FacultyPortalView from '../components/portal/FacultyPortalView';
 import CanteenPortalView from '../components/portal/CanteenPortalView';
 import LibraryPortalView from '../components/portal/LibraryPortalView';
 import StudentPortalView from '../components/portal/StudentPortalView';
 import AdminPortalView from '../components/portal/AdminPortalView';
+import RecruiterView from '../components/placement/RecruiterView';
 import SafetySOSModal from '../components/SafetySOSModal';
 import AICampusCopilot from '../components/AICampusCopilot';
 import AccessibilityToolbar from '../components/AccessibilityToolbar';
@@ -27,7 +27,7 @@ export default function Portal() {
     const checkAuth = () => {
       const user = campusStore.getCurrentUser();
       if (!user) {
-        navigate('/login');
+        navigate('/login?redirect=/portal');
       } else {
         setCurrentUser(user);
       }
@@ -37,11 +37,27 @@ export default function Portal() {
     return campusStore.subscribe(checkAuth);
   }, [navigate]);
 
-  const handleLogout = async () => {
-    await logoutUser();
+  const handleLogout = () => {
     campusStore.logout();
     SmartCampusStore.logout();
     navigate('/login');
+  };
+
+  const handleQuickRoleSwitch = (targetRole: UserRole) => {
+    const found = DEMO_ACCOUNTS.find(a => a.user.role === targetRole);
+    if (found) {
+      campusStore.setCurrentUser(found.user);
+      SmartCampusStore.setCurrentUser({
+        id: found.user.id,
+        username: found.user.username,
+        name: found.user.name,
+        email: found.user.email || `${found.user.username}@sathaye.edu.in`,
+        role: found.user.role.toLowerCase() as any,
+        avatar: found.user.avatar,
+        department: found.user.department
+      });
+      setCurrentUser(found.user);
+    }
   };
 
   if (!currentUser) return null;
@@ -55,6 +71,7 @@ export default function Portal() {
       case 'CANTEEN': return 'Canteen Operations';
       case 'LIBRARY': return 'Library Management';
       case 'ADMIN': return 'Admin Command Center';
+      case 'RECRUITER': return 'Corporate Recruitment Desk';
       case 'STUDENT': default: return 'Student Portal';
     }
   };
@@ -88,7 +105,9 @@ export default function Portal() {
                     role === 'ADMIN' ? 'bg-rose-500 text-white' :
                     role === 'FACULTY' ? 'bg-blue-400 text-slate-900' :
                     role === 'CANTEEN' ? 'bg-amber-400 text-slate-900' :
-                    role === 'LIBRARY' ? 'bg-indigo-400 text-white' : 'bg-yellow-400 text-[#003366]'
+                    role === 'LIBRARY' ? 'bg-indigo-400 text-white' :
+                    role === 'RECRUITER' ? 'bg-purple-400 text-slate-900' :
+                    'bg-yellow-400 text-[#003366]'
                   }`}>
                     {role}
                   </span>
@@ -100,8 +119,27 @@ export default function Portal() {
             </div>
 
             {/* Quick Actions & Profile */}
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              {/* Direct Link to Corporate Placements */}
+              <Link
+                to="/placements"
+                className="hidden lg:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-yellow-300 transition-colors"
+                title="Open Corporate Placements Desk"
+              >
+                <Building2 size={14} />
+                <span>Placements</span>
+              </Link>
+
+              {/* Direct Link to Blockchain Merkle Vault */}
+              <Link
+                to="/vault"
+                className="hidden lg:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-emerald-300 transition-colors"
+                title="Open Blockchain Credential Vault"
+              >
+                <Award size={14} />
+                <span>Merkle Vault</span>
+              </Link>
+
               {/* Emergency In-App Incident SOS */}
               <button
                 onClick={() => setIsSosOpen(true)}
@@ -183,13 +221,52 @@ export default function Portal() {
         </div>
       </nav>
 
+      {/* 1-Click Institutional Demo Role Switcher Strip */}
+      <div className="bg-[#002244] text-white border-b border-yellow-500/30 px-4 py-1.5 sticky top-16 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center space-x-2 text-yellow-400 font-bold uppercase tracking-wider text-[11px]">
+            <Sparkles size={13} />
+            <span>1-Click Switch Demo Role:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { role: 'STUDENT' as UserRole, label: 'Student', icon: GraduationCap },
+              { role: 'FACULTY' as UserRole, label: 'Faculty', icon: BookOpen },
+              { role: 'CANTEEN' as UserRole, label: 'Canteen', icon: Coffee },
+              { role: 'LIBRARY' as UserRole, label: 'Library', icon: BookMarked },
+              { role: 'ADMIN' as UserRole, label: 'Admin', icon: ShieldCheck },
+              { role: 'RECRUITER' as UserRole, label: 'Recruiter', icon: Building2 },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = role === item.role;
+              return (
+                <button
+                  key={item.role}
+                  onClick={() => handleQuickRoleSwitch(item.role)}
+                  className={`px-3 py-1 rounded-md font-bold text-[11px] uppercase tracking-wider flex items-center space-x-1 transition-all ${
+                    isActive
+                      ? 'bg-yellow-400 text-[#003366] shadow-xs font-black ring-1 ring-white/50'
+                      : 'bg-white/10 text-gray-200 hover:bg-white/20 hover:text-white'
+                  }`}
+                  title={`Switch to ${item.label} portal view`}
+                >
+                  <Icon size={12} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Main Content Area: Render Authorized Role View */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
         {role === 'STUDENT' && <StudentPortalView />}
         {role === 'FACULTY' && <FacultyPortalView />}
         {role === 'CANTEEN' && <CanteenPortalView />}
         {role === 'LIBRARY' && <LibraryPortalView />}
         {role === 'ADMIN' && <AdminPortalView />}
+        {role === 'RECRUITER' && <RecruiterView />}
       </main>
 
       {/* Emergency In-App SOS Modal */}

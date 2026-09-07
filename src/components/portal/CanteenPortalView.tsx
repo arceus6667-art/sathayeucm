@@ -440,72 +440,72 @@ export default function CanteenPortalView() {
   });
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-4 font-sans">
       
-      {/* Top Banner */}
-      <div className="bg-[#003366] text-white rounded-2xl p-6 sm:p-7 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-l-8 border-yellow-500 shadow-md">
+      {/* Top Banner - Compact for laptop viewports */}
+      <div className="bg-[#003366] text-white rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-l-4 border-yellow-500 shadow-md">
         <div>
-          <div className="flex items-center space-x-2 mb-1">
-            <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider bg-white/10 px-2.5 py-0.5 rounded-full">
+          <div className="flex items-center space-x-2 mb-0.5">
+            <span className="text-[11px] font-bold text-yellow-400 uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded-full">
               Kitchen & Meal Token Dispatch
             </span>
-            <span className="text-xs text-blue-200">• Terminal #CAN-POS-01</span>
+            <span className="text-[11px] text-blue-200">• Terminal #CAN-POS-01</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight">Sathaye Canteen Management Portal</h2>
-          <p className="text-xs sm:text-sm text-blue-200 mt-1">
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight">Sathaye Canteen Management Portal</h2>
+          <p className="text-xs text-blue-200 mt-0.5">
             Real-time digital token validation, order preparation pipeline & stock control.
           </p>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap gap-1.5 w-full md:w-auto">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               activeTab === 'orders' ? 'bg-yellow-500 text-[#003366] shadow-md font-extrabold' : 'bg-white/10 text-white hover:bg-white/20'
             }`}
           >
-            <Utensils size={14} />
+            <Utensils size={13} />
             <span>Orders ({activeOrders})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('scanner')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               activeTab === 'scanner' ? 'bg-yellow-500 text-[#003366] shadow-md font-extrabold' : 'bg-white/10 text-white hover:bg-white/20'
             }`}
           >
-            <ScanLine size={14} />
+            <ScanLine size={13} />
             <span>Token Scanner</span>
           </button>
 
           <button
             onClick={() => setActiveTab('inventory')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               activeTab === 'inventory' ? 'bg-yellow-500 text-[#003366] shadow-md font-extrabold' : 'bg-white/10 text-white hover:bg-white/20'
             }`}
           >
-            <Coffee size={14} />
+            <Coffee size={13} />
             <span>Menu & Stock ({items.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('queue')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               activeTab === 'queue' ? 'bg-yellow-500 text-[#003366] shadow-md font-extrabold' : 'bg-white/10 text-white hover:bg-white/20'
             }`}
           >
-            <Users size={14} />
+            <Users size={13} />
             <span>Queue Display</span>
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               activeTab === 'stats' ? 'bg-yellow-500 text-[#003366] shadow-md font-extrabold' : 'bg-white/10 text-white hover:bg-white/20'
             }`}
           >
-            <TrendingUp size={14} />
+            <TrendingUp size={13} />
             <span>Analytics</span>
           </button>
         </div>
@@ -600,10 +600,10 @@ export default function CanteenPortalView() {
           </div>
 
           {/* Orders List */}
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-gray-100 max-h-[calc(100vh-310px)] overflow-y-auto pr-1">
             {filteredOrders.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <PackageCheck size={40} className="mx-auto text-gray-300 mb-2" />
+              <div className="p-10 text-center text-gray-500">
+                <PackageCheck size={36} className="mx-auto text-gray-300 mb-2" />
                 <p className="font-bold text-gray-700">No orders match this filter.</p>
                 <p className="text-xs mt-1">Try selecting another status tab or clear your search query.</p>
               </div>
@@ -611,7 +611,7 @@ export default function CanteenPortalView() {
               filteredOrders.map(order => (
                 <div 
                   key={order.id} 
-                  className={`p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors ${
+                  className={`p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 transition-colors ${
                     order.status === 'READY' ? 'bg-green-50/40' :
                     order.status === 'PREPARING' ? 'bg-amber-50/30' :
                     order.status === 'CANCELLED' ? 'bg-gray-50/80 opacity-60' : 'hover:bg-gray-50/60'

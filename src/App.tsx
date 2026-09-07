@@ -16,6 +16,9 @@ import Library from './pages/Library';
 import Events from './pages/Events';
 import CampusSupport from './pages/CampusSupport';
 import Safety from './pages/Safety';
+import PlacementPortal from './pages/PlacementPortal';
+import CredentialVault from './pages/CredentialVault';
+import RLResourceAllocator from './components/rl/RLResourceAllocator';
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -50,6 +53,13 @@ export default function App() {
           <Route path="events" element={<Events />} />
           <Route path="support" element={<CampusSupport />} />
           <Route path="safety" element={<Safety />} />
+          <Route path="placements" element={<PlacementPortal />} />
+          <Route path="vault" element={<CredentialVault />} />
+          <Route path="rl-allocator" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <RLResourceAllocator />
+            </div>
+          } />
 
           {/* Catch-all for dynamically built generic pages based on ID */}
           <Route path="page/:id/:slug" element={<GenericPage />} />

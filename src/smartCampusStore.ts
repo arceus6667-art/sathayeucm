@@ -73,15 +73,12 @@ function saveItem<T>(key: string, val: T): void {
 
 export class SmartCampusStore {
   // --- AUTH & USER ---
-  static getCurrentUser(): UserProfile {
-    const cached = loadItem<UserProfile | null>(KEYS.USER, null);
-    if (cached) return cached;
-    
-    // Check legacy role if present
-    const legacyRole = localStorage.getItem('demo_role');
-    if (legacyRole === 'faculty') return DEMO_USERS['it.faculty01'].user;
-    if (legacyRole === 'admin') return DEMO_USERS['demo.admin'].user;
-    return DEMO_USERS['demo.student'].user;
+  static getCurrentUser(): UserProfile | null {
+    return loadItem<UserProfile | null>(KEYS.USER, null);
+  }
+
+  static isAuthenticated(): boolean {
+    return !!loadItem<UserProfile | null>(KEYS.USER, null);
   }
 
   static setCurrentUser(user: UserProfile | null) {

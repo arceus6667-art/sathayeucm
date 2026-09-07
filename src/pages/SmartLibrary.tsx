@@ -56,10 +56,14 @@ export function SmartLibrary() {
   });
 
   const myActiveLoans = borrowings.filter(
-    b => b.userId === currentUser.id && b.status === 'Issued'
+    b => currentUser && b.userId === currentUser.id && b.status === 'Issued'
   );
 
   const handleBorrow = (bookId: string) => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
     const success = SmartCampusStore.borrowBook(currentUser, bookId);
     if (success) {
       loadData();
@@ -74,6 +78,10 @@ export function SmartLibrary() {
   const handleSubmitRequest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!requestTitle.trim() || !requestDesc.trim()) return;
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
 
     SmartCampusStore.submitLibraryIssue({
       type: requestType,

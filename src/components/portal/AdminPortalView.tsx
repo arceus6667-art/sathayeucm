@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, MapPin, Wrench, AlertCircle, Building2, 
   Users, Coffee, ShieldAlert, BarChart3, FileText, QrCode, 
-  Clock, Bell, Radio, X, Calendar
+  Clock, Bell, Radio, X, Calendar, Cpu, Video
 } from 'lucide-react';
 import { campusStore } from '../../services/campusStore';
 import AdminHeader from './admin/AdminHeader';
@@ -19,9 +19,13 @@ import AdminReportsView from './admin/AdminReportsView';
 import AdminDigitalIDView from './admin/AdminDigitalIDView';
 import AdminAuditLogsView from './admin/AdminAuditLogsView';
 import AdminTimetableView from './admin/AdminTimetableView';
+import RLResourceAllocator from '../rl/RLResourceAllocator';
+import CCTVAnomalyDetector from '../safety/CCTVAnomalyDetector';
 
 export type AdminTab = 
   | 'overview' 
+  | 'rl-allocator'
+  | 'cctv-anomaly'
   | 'map' 
   | 'timetable'
   | 'maintenance' 
@@ -73,6 +77,8 @@ export default function AdminPortalView() {
 
   const navTabs = [
     { id: 'overview', label: 'Command Center', icon: LayoutDashboard },
+    { id: 'rl-allocator', label: 'RL Sim-to-Real Allocator', icon: Cpu },
+    { id: 'cctv-anomaly', label: 'CCTV Vision & Anomaly', icon: Video },
     { id: 'map', label: 'Campus Map', icon: MapPin },
     { id: 'timetable', label: 'Timetable Manager', icon: Calendar },
     { id: 'maintenance', label: 'Maintenance', icon: Wrench },
@@ -125,10 +131,14 @@ export default function AdminPortalView() {
       {/* 3. DYNAMIC TAB CONTENT */}
       <div>
         {activeTab === 'overview' && (
-          <AdminDashboardOverview
-            onNavigateTab={(t) => setActiveTab(t as AdminTab)}
+          <AdminDashboardOverview 
+            onNavigateTab={(tab) => setActiveTab(tab as AdminTab)} 
+            onOpenEmergencyModal={() => setShowEmergencyModal(true)} 
           />
         )}
+
+        {activeTab === 'rl-allocator' && <RLResourceAllocator />}
+        {activeTab === 'cctv-anomaly' && <CCTVAnomalyDetector />}
 
         {activeTab === 'map' && <AdminCampusMap />}
         {activeTab === 'timetable' && (

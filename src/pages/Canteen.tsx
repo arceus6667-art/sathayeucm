@@ -762,11 +762,11 @@ export default function Canteen() {
             </div>
 
             {/* Cart & Checkout Panel */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 sticky top-24">
-                <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
-                  <h3 className="font-extrabold text-[#003366] uppercase tracking-wide flex items-center">
-                    <ShoppingBag size={18} className="mr-2 text-yellow-500" /> Canteen Tray ({cartCount})
+            <div className="lg:col-span-4 space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sticky top-20 max-h-[calc(100vh-100px)] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+                  <h3 className="font-extrabold text-[#003366] uppercase tracking-wide text-xs flex items-center">
+                    <ShoppingBag size={16} className="mr-2 text-yellow-500" /> Canteen Tray ({cartCount})
                   </h3>
                   {cartCount > 0 && (
                     <button onClick={clearCart} className="text-xs text-red-600 hover:text-red-700 font-bold">
@@ -776,25 +776,25 @@ export default function Canteen() {
                 </div>
 
                 {cartCount === 0 ? (
-                  <div className="py-12 text-center text-gray-400">
-                    <Utensils size={36} className="mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm font-semibold text-gray-500">Your food tray is empty</p>
-                    <p className="text-xs text-gray-400 mt-1">Select items from the menu to pre-order.</p>
+                  <div className="py-8 text-center text-gray-400">
+                    <Utensils size={32} className="mx-auto mb-2 text-gray-300" />
+                    <p className="text-xs font-semibold text-gray-500">Your food tray is empty</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Select items from the menu to pre-order.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                  <div className="space-y-3">
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                       {cartItems.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center text-sm">
+                        <div key={item.id} className="flex justify-between items-center text-xs">
                           <div className="flex-grow pr-2">
                             <h5 className="font-bold text-gray-800 leading-snug">{item.name}</h5>
-                            <span className="text-xs text-gray-400">₹{item.price} × {item.qty}</span>
+                            <span className="text-[11px] text-gray-400">₹{item.price} × {item.qty}</span>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600"><Minus size={14} /></button>
+                          <div className="flex items-center space-x-1.5">
+                            <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600"><Minus size={13} /></button>
                             <span className="text-xs font-bold text-gray-700 w-4 text-center">{item.qty}</span>
-                            <button onClick={() => addToCart(item.id)} className="text-[#003366] hover:text-blue-700"><Plus size={14} /></button>
-                            <span className="font-bold text-sm text-gray-900 w-14 text-right">₹{item.price * item.qty}</span>
+                            <button onClick={() => addToCart(item.id)} className="text-[#003366] hover:text-blue-700"><Plus size={13} /></button>
+                            <span className="font-bold text-xs text-gray-900 w-12 text-right">₹{item.price * item.qty}</span>
                           </div>
                         </div>
                       ))}
@@ -802,11 +802,11 @@ export default function Canteen() {
 
                     {/* Pickup Slot */}
                     <div className="pt-2 border-t border-gray-100">
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Pickup Slot</label>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Pickup Slot</label>
                       <select 
                         value={pickupSlot} 
                         onChange={e => setPickupSlot(e.target.value)}
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:border-[#003366] focus:ring-1 focus:ring-[#003366] outline-none"
+                        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:border-[#003366] focus:ring-1 focus:ring-[#003366] outline-none"
                       >
                         {getPickupSlots().map(slot => (
                           <option key={slot.value} value={slot.value} disabled={slot.disabled}>
@@ -818,23 +818,23 @@ export default function Canteen() {
 
                     {/* Note */}
                     <div>
-                      <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Special Request (Optional)</label>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Special Request (Optional)</label>
                       <input 
                         type="text" value={customerNote} onChange={e => setCustomerNote(e.target.value)} 
                         placeholder="e.g. Extra spicy, no onions..."
-                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:border-[#003366] outline-none"
+                        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:border-[#003366] outline-none"
                       />
                     </div>
 
                     {/* Totals */}
-                    <div className="pt-3 border-t border-gray-100 space-y-1.5">
-                      <div className="flex justify-between text-xs text-gray-500">
+                    <div className="pt-2 border-t border-gray-100 space-y-1">
+                      <div className="flex justify-between text-[11px] text-gray-500">
                         <span>Subtotal</span><span>₹{cartTotal}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-green-700 font-medium">
+                      <div className="flex justify-between text-[11px] text-green-700 font-medium">
                         <span>College Subsidy</span><span>Included</span>
                       </div>
-                      <div className="flex justify-between text-base font-extrabold text-gray-900 pt-2 border-t border-gray-200">
+                      <div className="flex justify-between text-sm font-extrabold text-gray-900 pt-1.5 border-t border-gray-200">
                         <span>Total</span><span className="text-[#003366]">₹{cartTotal}</span>
                       </div>
                     </div>
@@ -842,17 +842,17 @@ export default function Canteen() {
                     <button
                       onClick={handleCheckout}
                       disabled={loading || !pickupSlot}
-                      className="w-full py-3 bg-[#003366] hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm uppercase tracking-wider transition-all shadow flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 bg-[#003366] hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow flex items-center justify-center space-x-1.5"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin" /> : <><span>Proceed to Payment</span><ArrowRight size={16} /></>}
+                      {loading ? <Loader2 size={15} className="animate-spin" /> : <><span>Proceed to Payment</span><ArrowRight size={15} /></>}
                     </button>
                   </div>
                 )}
               </div>
 
               {/* Guidelines */}
-              <div className="bg-yellow-50/70 p-4 rounded-xl border border-yellow-200 text-xs text-gray-700 space-y-2">
-                <div className="flex items-center space-x-1.5 font-bold text-[#003366] uppercase tracking-wide">
+              <div className="bg-yellow-50/70 p-3 rounded-xl border border-yellow-200 text-[11px] text-gray-700 space-y-1.5">
+                <div className="flex items-center space-x-1.5 font-bold text-[#003366] uppercase tracking-wide text-xs">
                   <ShieldCheck size={16} /><span>Canteen Guidelines</span>
                 </div>
                 <p>Breakfast: 07:30 AM - 11:30 AM. Lunch: 12:00 PM - 03:00 PM.</p>

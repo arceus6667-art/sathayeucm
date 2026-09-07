@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { 
   BookOpen, Clock, Calendar, FileText, CheckCircle2, 
-  Download, ArrowRight, Bell, AlertTriangle, Coffee, MapPin, User
+  Download, ArrowRight, Bell, AlertTriangle, Coffee, MapPin, User,
+  Briefcase, Award
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { campusStore } from '../../services/campusStore';
+import StudentPlacementView from '../placement/StudentPlacementView';
+import StudentCredentialVault from './StudentCredentialVault';
 
 export default function StudentPortalView() {
-  const [activeSubTab, setActiveSubTab] = useState<'courses' | 'grades' | 'timetable' | 'activity'>('courses');
+  const [activeSubTab, setActiveSubTab] = useState<'courses' | 'grades' | 'timetable' | 'activity' | 'placements' | 'vault'>('courses');
   const user = campusStore.getCurrentUser();
   const timetable = campusStore.getTimetable();
   const canteenOrders = user ? campusStore.getOrdersForStudent(user.id) : [];
@@ -22,10 +25,10 @@ export default function StudentPortalView() {
   ];
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-4 font-sans">
       
       {/* Student Academic Status Card */}
-      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-6 border-l-4 border-yellow-500 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 sm:p-5 border-l-4 border-yellow-500 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center space-x-2 mb-1">
             <span className="text-xs font-bold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded uppercase">
@@ -33,25 +36,25 @@ export default function StudentPortalView() {
             </span>
             <span className="text-xs text-gray-500 font-mono">Roll: IT-2026-01</span>
           </div>
-          <h2 className="text-2xl font-extrabold text-[#003366]">{user?.name || 'Aarav Mehta'}</h2>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-[#003366]">{user?.name || 'Aarav Mehta'}</h2>
           <p className="text-xs text-gray-500 mt-0.5">Sathaye College (Autonomous) • PRN: 20240164009821</p>
         </div>
 
-        <div className="bg-green-100 text-green-800 px-4 py-2 rounded-xl font-extrabold text-xs border border-green-300 flex items-center shrink-0">
-          <CheckCircle2 size={16} className="mr-1.5" /> Good Academic Standing
+        <div className="bg-green-100 text-green-800 px-3.5 py-1.5 rounded-xl font-extrabold text-xs border border-green-300 flex items-center shrink-0">
+          <CheckCircle2 size={15} className="mr-1.5" /> Good Academic Standing
         </div>
       </div>
 
       {/* Next Class Alert Banner */}
       {nextClass && (
-        <div className="bg-[#003366] text-white p-5 rounded-xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-xl bg-yellow-400 text-[#003366] flex items-center justify-center font-extrabold text-lg shrink-0">
-              <Clock size={24} />
+        <div className="bg-[#003366] text-white p-4 rounded-xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-yellow-400 text-[#003366] flex items-center justify-center font-extrabold text-base shrink-0">
+              <Clock size={20} />
             </div>
             <div>
-              <span className="text-xs text-yellow-300 font-bold uppercase tracking-wider block">Upcoming Class</span>
-              <h3 className="text-base font-bold">{nextClass.subject} ({nextClass.subjectCode})</h3>
+              <span className="text-[11px] text-yellow-300 font-bold uppercase tracking-wider block">Upcoming Class</span>
+              <h3 className="text-sm sm:text-base font-bold leading-tight">{nextClass.subject} ({nextClass.subjectCode})</h3>
               <p className="text-xs text-blue-200">
                 {nextClass.startTime} - {nextClass.endTime} • {nextClass.facultyName} • {nextClass.room}
               </p>
@@ -60,7 +63,7 @@ export default function StudentPortalView() {
 
           <Link
             to={`/map?target=${nextClass.roomId}`}
-            className="bg-yellow-500 hover:bg-yellow-400 text-[#003366] text-xs font-extrabold uppercase px-4 py-2.5 rounded-lg transition-colors shadow flex items-center"
+            className="bg-yellow-500 hover:bg-yellow-400 text-[#003366] text-xs font-extrabold uppercase px-3.5 py-2 rounded-lg transition-colors shadow flex items-center shrink-0"
           >
             <MapPin size={14} className="mr-1.5 text-red-700" /> Navigate to Room
           </Link>
@@ -68,25 +71,27 @@ export default function StudentPortalView() {
       )}
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex space-x-2 border-b border-gray-200 pb-3">
+      <div className="flex space-x-2 border-b border-gray-200 pb-2 overflow-x-auto scrollbar-none">
         {[
           { id: 'courses', label: 'My Courses & Attendance', icon: BookOpen },
           { id: 'timetable', label: 'Timetable', icon: Calendar },
           { id: 'grades', label: 'Results & Marksheets', icon: FileText },
           { id: 'activity', label: 'Campus Activity', icon: Coffee },
+          { id: 'placements', label: 'Placements & Career', icon: Briefcase },
+          { id: 'vault', label: 'Credential Vault', icon: Award },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id as any)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
                 activeSubTab === tab.id
                   ? 'bg-[#003366] text-yellow-400 shadow-sm'
                   : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
               }`}
             >
-              <Icon size={14} />
+              <Icon size={13} />
               <span>{tab.label}</span>
             </button>
           );
@@ -95,9 +100,9 @@ export default function StudentPortalView() {
 
       {/* SUB-TAB 1: COURSES */}
       {activeSubTab === 'courses' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div className="bg-gray-50 px-5 py-3 border-b border-gray-200 flex justify-between items-center">
               <h3 className="font-extrabold text-[#003366] uppercase text-sm">Active Semester IV Subjects</h3>
               <span className="text-xs font-bold text-green-700">Avg. 88.5% Att.</span>
             </div>
@@ -256,6 +261,16 @@ export default function StudentPortalView() {
             )}
           </div>
         </div>
+      )}
+
+      {/* SUB-TAB 5: PLACEMENTS & CAREER */}
+      {activeSubTab === 'placements' && (
+        <StudentPlacementView />
+      )}
+
+      {/* SUB-TAB 6: BLOCKCHAIN CREDENTIAL VAULT */}
+      {activeSubTab === 'vault' && (
+        <StudentCredentialVault />
       )}
 
     </div>

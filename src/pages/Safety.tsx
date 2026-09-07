@@ -6,6 +6,7 @@ import {
 import { Link } from 'react-router-dom';
 import { EMERGENCY_CONTACTS } from '../services/campusStore';
 import SafetySOSModal from '../components/SafetySOSModal';
+import CCTVAnomalyDetector from '../components/safety/CCTVAnomalyDetector';
 
 export default function Safety() {
   const [isSosOpen, setIsSosOpen] = useState(false);
@@ -43,6 +44,9 @@ export default function Safety() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
+        {/* Real-time CCTV AI Anomaly Detection Hub */}
+        <CCTVAnomalyDetector />
+
         {/* Speed-dial Helplines */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h3 className="font-extrabold text-[#003366] uppercase tracking-wide text-base mb-4 flex items-center">

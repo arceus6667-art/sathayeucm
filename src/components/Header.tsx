@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { siteMenu, MenuItem } from '../menuData';
 import AccessibilityTopRibbon from './AccessibilityTopRibbon';
 import { SmartCampusStore } from '../smartCampusStore';
+import { campusStore } from '../services/campusStore';
 import { TRANSLATIONS, SupportedLanguage } from '../services/translations';
 
 export default function Header() {
@@ -12,6 +13,15 @@ export default function Header() {
   const [openMobileDropdown, setOpenMobileDropdown] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [lang, setLang] = useState<SupportedLanguage>(() => SmartCampusStore.getAccessibilityPrefs().language);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => campusStore.isAuthenticated());
+
+  useEffect(() => {
+    const handleAuth = () => {
+      setIsAuthenticated(campusStore.isAuthenticated());
+    };
+    handleAuth();
+    return campusStore.subscribe(handleAuth);
+  }, []);
 
   useEffect(() => {
     const handleUpdate = (e: any) => {
@@ -45,6 +55,20 @@ export default function Header() {
     return item.type;
   };
 
+  const getSubmenuItems = (item: MenuItem): MenuItem[] => {
+    if (!item.children) return [];
+    if (item.id === 'smart-campus') {
+      return item.children.filter(child => {
+        // "Support & Lost-and-Found" should be available only after authentication
+        if (child.id === 'sc-support' && !isAuthenticated) return false;
+        // "Unified Role Portal" should be available only after authentication
+        if (child.id === 'sc-portal' && !isAuthenticated) return false;
+        return true;
+      });
+    }
+    return item.children;
+  };
+
   const renderDesktopMenu = (items: MenuItem[]) => {
     return items.map((item) => (
       <div 
@@ -62,7 +86,7 @@ export default function Header() {
         {/* Dropdown */}
         {item.children && (
           <div className="absolute top-full left-0 bg-white shadow-lg border-t-[3px] border-yellow-500 min-w-[240px] z-50 py-2 hidden group-hover:block">
-            {item.children.map((child) => (
+            {getSubmenuItems(item).map((child) => (
               <div key={child.id} className="relative group/sub">
                 <Link 
                   to={child.path || '#'}
@@ -117,7 +141,7 @@ export default function Header() {
         
         {item.children && openMobileDropdown === item.id && (
           <div className="bg-gray-50 px-4 py-2 flex flex-col space-y-2">
-            {item.children.map((child) => (
+            {getSubmenuItems(item).map((child) => (
               <Link 
                 key={child.id}
                 to={child.path || '#'}
@@ -149,8 +173,6 @@ export default function Header() {
             </span>
           </div>
           <div className="flex items-center space-x-3">
-            <Link to="/map" className="hover:text-[#003366] font-semibold text-blue-700 hidden sm:block">{t.nav.map}</Link>
-            <span className="text-gray-300 hidden sm:block">|</span>
             <Link to="/canteen" className="hover:text-[#003366] font-semibold hidden md:block">{t.nav.canteen}</Link>
             <span className="text-gray-300 hidden md:block">|</span>
             <Link to="/library" className="hover:text-[#003366] font-semibold hidden md:block">{t.nav.library}</Link>
@@ -159,25 +181,31 @@ export default function Header() {
             <span className="text-gray-300 hidden sm:block">|</span>
             <Link to="/safety" className="hover:text-red-700 font-bold text-red-600 hidden sm:block">{t.nav.sos}</Link>
             <span className="text-gray-300 hidden sm:block">|</span>
-            <Link to="/portal" className="bg-[#003366] text-yellow-400 hover:bg-blue-900 px-2.5 py-1 rounded text-xs font-black uppercase tracking-wider">
-              {t.nav.portal}
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/portal" className="bg-[#003366] text-yellow-400 hover:bg-blue-900 px-2.5 py-1 rounded text-xs font-black uppercase tracking-wider">
+                {t.nav.portal}
+              </Link>
+            ) : (
+              <Link to="/login" className="bg-[#003366] text-yellow-400 hover:bg-blue-900 px-3 py-1 rounded text-xs font-black uppercase tracking-wider">
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Main Header Area */}
-      <div className="max-w-[1140px] mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
+      {/* Main Header Area - Compact for laptop viewports */}
+      <div className="max-w-[1140px] mx-auto px-4 sm:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between">
         {/* Logo and Title */}
         <div className="flex items-center">
-          <Link to="/" className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-full flex items-center justify-center mr-4 md:mr-5 shadow-sm border-2 border-yellow-500 shrink-0 overflow-hidden">
+          <Link to="/" className="w-14 h-14 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center mr-3 md:mr-4 shadow-sm border-2 border-yellow-500 shrink-0 overflow-hidden">
             <img src="/WhatsApp%20Image%202026-09-07%20at%209.12.07%20AM.jpeg" alt="Sathaye College Logo" className="w-full h-full object-contain p-1" />
           </Link>
           <div>
-            <p className="text-[11px] md:text-[13px] font-semibold text-[#003366] uppercase tracking-wide leading-tight mb-1">Parle Tilak Vidyalaya Association's</p>
-            <h1 className="text-2xl md:text-4xl font-extrabold text-[#003366] uppercase tracking-tight leading-none mb-1">Sathaye College</h1>
-            <p className="text-[10px] md:text-xs font-semibold text-gray-600 mt-1">(AUTONOMOUS 2021-31)</p>
-            <p className="text-[10px] md:text-xs text-gray-500 mt-1 hidden sm:block">Re-accredited "A" Grade by NAAC (3rd CYCLE)</p>
+            <p className="text-[11px] md:text-xs font-semibold text-[#003366] uppercase tracking-wide leading-tight mb-0.5">Parle Tilak Vidyalaya Association's</p>
+            <h1 className="text-xl md:text-3xl font-extrabold text-[#003366] uppercase tracking-tight leading-none mb-0.5">Sathaye College</h1>
+            <p className="text-[10px] md:text-xs font-semibold text-gray-600 mt-0.5">(AUTONOMOUS 2021-31)</p>
+            <p className="text-[10px] md:text-xs text-gray-500 mt-0.5 hidden sm:block">Re-accredited "A" Grade by NAAC (3rd CYCLE)</p>
           </div>
         </div>
         

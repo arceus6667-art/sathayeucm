@@ -211,6 +211,19 @@ export const DEMO_ACCOUNTS: AuthAccount[] = [
       avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200'
     },
     passwordHash: 'DemoAdmin@123'
+  },
+  // Recruiter Demo Account
+  {
+    user: {
+      id: 'rec-001',
+      username: 'recruiter.tcs',
+      name: 'Rajesh Singhania',
+      role: 'RECRUITER',
+      department: 'Corporate Campus Relations',
+      email: 'recruiter@tcs.com',
+      avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=200'
+    },
+    passwordHash: 'Recruiter@123'
   }
 ];
 
@@ -1412,15 +1425,7 @@ class CampusStore {
       if (storedUser) {
         this.currentUser = JSON.parse(storedUser);
       } else {
-        // Default demo session fallback to student
-        const demoRole = localStorage.getItem('demo_role');
-        if (demoRole === 'faculty') {
-          this.currentUser = DEMO_ACCOUNTS.find(a => a.user.role === 'FACULTY')?.user || null;
-        } else if (demoRole === 'admin') {
-          this.currentUser = DEMO_ACCOUNTS.find(a => a.user.role === 'ADMIN')?.user || null;
-        } else {
-          this.currentUser = DEMO_ACCOUNTS[0].user; // Student
-        }
+        this.currentUser = null;
       }
 
       const orders = localStorage.getItem('sathaye_canteen_orders');
@@ -1708,6 +1713,10 @@ class CampusStore {
 
   public getCurrentUser(): UserProfile | null {
     return this.currentUser;
+  }
+
+  public isAuthenticated(): boolean {
+    return this.currentUser !== null;
   }
 
   public setCurrentUser(user: UserProfile | null): void {
