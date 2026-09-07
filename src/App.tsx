@@ -44,6 +44,8 @@ export default function App() {
           {/* Smart Sathey Campus Features */}
           <Route path="map" element={<CampusMap />} />
           <Route path="canteen" element={<Canteen />} />
+          <Route path="canteen/order/:id" element={<Canteen />} />
+          <Route path="canteen/history" element={<Canteen />} />
           <Route path="library" element={<Library />} />
           <Route path="events" element={<Events />} />
           <Route path="support" element={<CampusSupport />} />

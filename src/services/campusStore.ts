@@ -717,108 +717,172 @@ export const STUDENT_SCHEDULE: ClassScheduleItem[] = [
 // --- CANTEEN MENU ITEMS ---
 export const INITIAL_CANTEEN_ITEMS: CanteenItem[] = [
   {
-    id: 'can-1',
-    name: 'Special Kolhapuri Misal Pav',
-    category: 'Breakfast',
-    price: 60,
+    id: 'food-1',
+    name: 'Masala Sandwich',
+    category: 'Snacks',
+    price: 45,
     isAvailable: true,
-    prepTimeMinutes: 5,
-    calories: 380,
-    image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&q=80&w=400',
-    rating: 4.9,
+    prepTimeMinutes: 6,
+    calories: 310,
+    image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&q=80&w=400',
+    rating: 4.8,
     isVeg: true,
-    description: 'Signature spiced sprout curry with farsan, chopped onions, lemon, and fresh pav.'
+    stock: 40,
+    description: 'Grilled triple-layer sandwich with spiced potato, capsicum, cheese, and green chutney.'
   },
   {
-    id: 'can-2',
-    name: 'Steamed Idli Sambar (2 Pcs)',
+    id: 'food-2',
+    name: 'Veg Frankie',
+    category: 'Snacks',
+    price: 55,
+    isAvailable: true,
+    prepTimeMinutes: 7,
+    calories: 380,
+    image: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80&w=400',
+    rating: 4.7,
+    isVeg: true,
+    stock: 35,
+    description: 'Soft roti wrapped around spiced paneer-vegetable filling with tangy sauces.'
+  },
+  {
+    id: 'food-3',
+    name: 'Paneer Roll',
+    category: 'Snacks',
+    price: 70,
+    isAvailable: true,
+    prepTimeMinutes: 8,
+    calories: 420,
+    image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&q=80&w=400',
+    rating: 4.9,
+    isVeg: true,
+    stock: 25,
+    description: 'Crispy paratha roll stuffed with marinated paneer tikka, onions, and mint chutney.'
+  },
+  {
+    id: 'food-4',
+    name: 'Poha',
+    category: 'Breakfast',
+    price: 35,
+    isAvailable: true,
+    prepTimeMinutes: 4,
+    calories: 250,
+    image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=400',
+    rating: 4.6,
+    isVeg: true,
+    stock: 50,
+    description: 'Flattened rice tempered with mustard seeds, curry leaves, peanuts, and fresh lemon.'
+  },
+  {
+    id: 'food-5',
+    name: 'Idli Sambar',
     category: 'Breakfast',
     price: 45,
     isAvailable: true,
-    prepTimeMinutes: 4,
+    prepTimeMinutes: 5,
     calories: 220,
     image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&q=80&w=400',
     rating: 4.8,
     isVeg: true,
-    description: 'Hot fluffy rice cakes served with aromatic vegetable sambar and fresh coconut chutney.'
+    stock: 45,
+    description: 'Steamed rice cakes (3 pcs) served with aromatic vegetable sambar and coconut chutney.'
   },
   {
-    id: 'can-3',
-    name: 'Crispy Medu Vada (2 Pcs)',
-    category: 'Breakfast',
-    price: 50,
+    id: 'food-6',
+    name: 'Veg Biryani',
+    category: 'Meals',
+    price: 90,
     isAvailable: true,
-    prepTimeMinutes: 6,
-    calories: 310,
-    image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=400',
+    prepTimeMinutes: 10,
+    calories: 520,
+    image: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&q=80&w=400',
+    rating: 4.9,
+    isVeg: true,
+    stock: 30,
+    description: 'Fragrant basmati rice layered with seasonal vegetables, saffron, and aromatic spices. Served with raita.'
+  },
+  {
+    id: 'food-7',
+    name: 'Cold Coffee',
+    category: 'Beverages',
+    price: 60,
+    isAvailable: true,
+    prepTimeMinutes: 3,
+    calories: 180,
+    image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&q=80&w=400',
     rating: 4.7,
     isVeg: true,
-    description: 'Golden fried lentil donuts seasoned with peppercorns, curry leaves, and ginger.'
+    stock: 60,
+    description: 'Creamy chilled coffee blended with ice cream and topped with chocolate shavings.'
   },
   {
-    id: 'can-4',
-    name: 'Mumbai Batata Vada Pav (Single)',
-    category: 'Snacks',
-    price: 22,
+    id: 'food-8',
+    name: 'Lime Soda',
+    category: 'Beverages',
+    price: 35,
     isAvailable: true,
     prepTimeMinutes: 2,
-    calories: 290,
-    image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&q=80&w=400',
-    rating: 5.0,
+    calories: 45,
+    image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&q=80&w=400',
+    rating: 4.5,
     isVeg: true,
-    description: 'College staple spiced potato fritter with dry garlic chutney in a warm pav.'
+    stock: 70,
+    description: 'Freshly squeezed lime with chilled soda, black salt, and a hint of cumin.'
   },
   {
-    id: 'can-5',
-    name: 'Schezwan Veg Grilled Sandwich',
-    category: 'Snacks',
-    price: 75,
+    id: 'food-9',
+    name: 'Fruit Bowl',
+    category: 'Healthy',
+    price: 70,
     isAvailable: true,
-    prepTimeMinutes: 8,
-    calories: 420,
-    image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&q=80&w=400',
-    rating: 4.8,
+    prepTimeMinutes: 4,
+    calories: 150,
+    image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&q=80&w=400',
+    rating: 4.6,
     isVeg: true,
-    description: 'Triple-decker grilled sandwich filled with capsicum, cheese, and spicy schezwan sauce.'
+    stock: 20,
+    description: 'Fresh seasonal fruits — papaya, watermelon, pomegranate, and banana with a honey drizzle.'
   },
   {
-    id: 'can-6',
-    name: 'Veg Deluxe Thali Meal',
+    id: 'food-10',
+    name: 'Water Bottle',
+    category: 'Beverages',
+    price: 20,
+    isAvailable: true,
+    prepTimeMinutes: 0,
+    calories: 0,
+    image: 'https://images.unsplash.com/photo-1560023907-5f339617ea55?auto=format&fit=crop&q=80&w=400',
+    rating: 4.0,
+    isVeg: true,
+    stock: 100,
+    description: '500ml packaged drinking water.'
+  },
+  {
+    id: 'food-11',
+    name: 'Veg Thali',
     category: 'Meals',
     price: 110,
     isAvailable: true,
-    prepTimeMinutes: 7,
+    prepTimeMinutes: 8,
     calories: 650,
-    image: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&q=80&w=400',
-    rating: 4.8,
-    isVeg: true,
-    description: 'Wholesome student meal: 2 seasonal sabzis, dal tadka, jeera rice, 3 rotis, salad, and sweet.'
-  },
-  {
-    id: 'can-7',
-    name: 'South Indian Filter Coffee',
-    category: 'Beverages',
-    price: 25,
-    isAvailable: true,
-    prepTimeMinutes: 3,
-    calories: 90,
-    image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&q=80&w=400',
+    image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&q=80&w=400',
     rating: 4.9,
     isVeg: true,
-    description: 'Frothy freshly brewed chicory-infused coffee in traditional dabarah.'
+    stock: 25,
+    description: 'Complete meal with 3 rotis, dal tadka, paneer sabzi, jeera rice, salad, and papad.'
   },
   {
-    id: 'can-8',
-    name: 'Spiced Masala Buttermilk (Chaas)',
-    category: 'Healthy',
-    price: 20,
+    id: 'food-12',
+    name: 'Masala Chai',
+    category: 'Beverages',
+    price: 15,
     isAvailable: true,
-    prepTimeMinutes: 2,
+    prepTimeMinutes: 3,
     calories: 60,
-    image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&q=80&w=400',
-    rating: 4.8,
+    image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&q=80&w=400',
+    rating: 4.9,
     isVeg: true,
-    description: 'Cooling churned curd with roasted cumin, green chillies, and fresh coriander.'
+    stock: 80,
+    description: 'Authentic spiced tea brewed with ginger, cardamom, and fresh milk.'
   }
 ];
 
@@ -1913,6 +1977,29 @@ class CampusStore {
 
     this.notify();
     return order;
+  }
+
+  public getOrderById(orderId: string): CanteenOrder | undefined {
+    return this.canteenOrders.find(o => o.id === orderId || o.orderNumber === orderId);
+  }
+
+  public getCanteenQueue(): { queueLength: number; estimatedWaitMins: number; status: 'NORMAL' | 'BUSY' | 'CLOSED'; updatedAt: string } {
+    const activeCount = this.canteenOrders.filter(o => o.status === 'CONFIRMED' || o.status === 'PREPARING').length;
+    return {
+      queueLength: activeCount || 14,
+      estimatedWaitMins: Math.max(4, (activeCount || 7) * 2),
+      status: activeCount > 15 ? 'BUSY' : 'NORMAL',
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  public updateCanteenItemStock(itemId: string, stock: number): void {
+    const item = this.canteenItems.find(i => i.id === itemId);
+    if (item) {
+      item.stock = Math.max(0, stock);
+      if (item.stock === 0) item.isAvailable = false;
+      this.notify();
+    }
   }
 
   public updateOrderStatus(orderId: string, status: CanteenOrder['status']): void {

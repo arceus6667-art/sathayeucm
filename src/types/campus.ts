@@ -222,7 +222,7 @@ export type CanteenOrderStatus =
 export interface CanteenItem {
   id: string;
   name: string;
-  category: 'Breakfast' | 'Snacks' | 'Meals' | 'Beverages' | 'Healthy';
+  category: 'Breakfast' | 'Snacks' | 'Meals' | 'Beverages' | 'Healthy' | 'Specials';
   price: number;
   isAvailable: boolean;
   prepTimeMinutes: number;
@@ -231,6 +231,7 @@ export interface CanteenItem {
   rating: number;
   isVeg: boolean;
   description?: string;
+  stock?: number;
 }
 
 export interface CanteenOrderItem {
@@ -242,18 +243,68 @@ export interface CanteenOrderItem {
 
 export interface CanteenOrder {
   id: string;
+  orderNumber?: string;
   studentId: string;
   studentName: string;
   items: CanteenOrderItem[];
   totalAmount: number;
+  subtotal?: number;
+  convenienceFee?: number;
   status: CanteenOrderStatus;
   tokenNumber: number;
   token?: string;
   tokenCode?: string;
   estimatedTime: string;
   createdAt: string;
+  updatedAt?: string;
   pickupSlot?: string;
+  paymentStatus?: CanteenPaymentStatus;
+  paymentMethod?: string;
+  paymentRef?: string;
+  customerNote?: string;
 }
+
+export type CanteenPaymentStatus = 'PENDING' | 'PAID_SANDBOX' | 'CASH_AT_COUNTER' | 'PAID_GATEWAY' | 'REFUNDED' | 'FAILED';
+
+export type CanteenTokenStatus = 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+
+export interface CanteenPayment {
+  id: string;
+  orderId: string;
+  transactionReference: string;
+  paymentMethod: string;
+  amount: number;
+  status: 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  paidAt?: string;
+  createdAt: string;
+}
+
+export interface CanteenMealToken {
+  id: string;
+  orderId: string;
+  tokenCode: string;
+  status: CanteenTokenStatus;
+  validFrom: string;
+  validUntil: string;
+  scannedBy?: string;
+  scannedAt?: string;
+  createdAt: string;
+}
+
+export interface CanteenQueueStatus {
+  queueLength: number;
+  estimatedWaitMins: number;
+  status: 'NORMAL' | 'BUSY' | 'CLOSED';
+  updatedAt: string;
+}
+
+export interface CanteenTokenVerification {
+  valid: boolean;
+  reason?: string;
+  order?: CanteenOrder;
+  token?: CanteenMealToken;
+}
+
 
 export interface LibraryBook {
   id: string;

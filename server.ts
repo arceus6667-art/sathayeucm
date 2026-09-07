@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
@@ -83,23 +84,674 @@ let TIMETABLE_CHANGES: Array<{
   announcedAt: string;
 }> = [];
 
-// Canteen Orders
+// Canteen Orders — Full Workflow Implementation
+import crypto from 'crypto';
+
 interface ServerCanteenOrder {
   id: string;
   userEmail: string;
   orderNumber: string;
   items: Array<{ itemId: string; name: string; quantity: number; price: number }>;
+  subtotal: number;
+  convenienceFee: number;
   totalAmount: number;
-  status: 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
-  paymentStatus: 'PAID_SANDBOX' | 'CASH_AT_COUNTER';
+  status: 'PENDING_PAYMENT' | 'PAID' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+  paymentStatus: 'PENDING' | 'PAID_SANDBOX' | 'CASH_AT_COUNTER' | 'REFUNDED' | 'FAILED';
+  paymentMethod: string;
+  pickupSlot: string;
+  customerNote: string;
   tokenCode: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ServerCanteenPayment {
+  id: string;
+  orderId: string;
+  transactionReference: string;
+  paymentMethod: string;
+  amount: number;
+  status: 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  paidAt: string | null;
   createdAt: string;
 }
 
-let CANTEEN_ORDERS: ServerCanteenOrder[] = [];
-let orderSeq = 100;
+interface ServerMealToken {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  tokenCode: string;
+  status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
+  validFrom: string;
+  validUntil: string;
+  scannedBy: string | null;
+  scannedAt: string | null;
+  createdAt: string;
+}
 
-// Library Loans & Reservations
+interface ServerCanteenMenuItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  isAvailable: boolean;
+  prepTimeMinutes: number;
+  calories: number;
+  isVeg: boolean;
+  description: string;
+  image: string;
+  stock: number;
+  rating: number;
+}
+
+interface CanteenQueue {
+  queueLength: number;
+  estimatedWaitMins: number;
+  status: 'NORMAL' | 'BUSY' | 'CLOSED';
+  updatedAt: string;
+}
+
+let CANTEEN_ORDERS: ServerCanteenOrder[] = [];
+let CANTEEN_PAYMENTS: ServerCanteenPayment[] = [];
+let MEAL_TOKENS: ServerMealToken[] = [];
+let orderSeq = 100;
+let paymentSeq = 1000;
+
+let CANTEEN_QUEUE: CanteenQueue = {
+  queueLength: 18,
+  estimatedWaitMins: 12,
+  status: 'NORMAL',
+  updatedAt: new Date().toISOString()
+};
+
+// Server-authoritative menu with stock
+const CANTEEN_MENU: ServerCanteenMenuItem[] = [
+  { id: 'food-1', name: 'Masala Sandwich', category: 'Snacks', price: 45, isAvailable: true, prepTimeMinutes: 6, calories: 310, isVeg: true, description: 'Grilled triple-layer sandwich with spiced potato, capsicum, cheese, and green chutney.', image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&q=80&w=400', stock: 40, rating: 4.8 },
+  { id: 'food-2', name: 'Veg Frankie', category: 'Snacks', price: 55, isAvailable: true, prepTimeMinutes: 7, calories: 380, isVeg: true, description: 'Soft roti wrapped around spiced paneer-vegetable filling with tangy sauces.', image: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80&w=400', stock: 35, rating: 4.7 },
+  { id: 'food-3', name: 'Paneer Roll', category: 'Snacks', price: 70, isAvailable: true, prepTimeMinutes: 8, calories: 420, isVeg: true, description: 'Crispy paratha roll stuffed with marinated paneer tikka, onions, and mint chutney.', image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&q=80&w=400', stock: 25, rating: 4.9 },
+  { id: 'food-4', name: 'Poha', category: 'Breakfast', price: 35, isAvailable: true, prepTimeMinutes: 4, calories: 250, isVeg: true, description: 'Flattened rice tempered with mustard seeds, curry leaves, peanuts, and fresh lemon.', image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=400', stock: 50, rating: 4.6 },
+  { id: 'food-5', name: 'Idli Sambar', category: 'Breakfast', price: 45, isAvailable: true, prepTimeMinutes: 5, calories: 220, isVeg: true, description: 'Steamed rice cakes (3 pcs) served with aromatic vegetable sambar and coconut chutney.', image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&q=80&w=400', stock: 45, rating: 4.8 },
+  { id: 'food-6', name: 'Veg Biryani', category: 'Meals', price: 90, isAvailable: true, prepTimeMinutes: 10, calories: 520, isVeg: true, description: 'Fragrant basmati rice layered with seasonal vegetables, saffron, and aromatic spices. Served with raita.', image: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&q=80&w=400', stock: 30, rating: 4.9 },
+  { id: 'food-7', name: 'Cold Coffee', category: 'Beverages', price: 60, isAvailable: true, prepTimeMinutes: 3, calories: 180, isVeg: true, description: 'Creamy chilled coffee blended with ice cream and topped with chocolate shavings.', image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&q=80&w=400', stock: 60, rating: 4.7 },
+  { id: 'food-8', name: 'Lime Soda', category: 'Beverages', price: 35, isAvailable: true, prepTimeMinutes: 2, calories: 45, isVeg: true, description: 'Freshly squeezed lime with chilled soda, black salt, and a hint of cumin.', image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&q=80&w=400', stock: 70, rating: 4.5 },
+  { id: 'food-9', name: 'Fruit Bowl', category: 'Healthy', price: 70, isAvailable: true, prepTimeMinutes: 4, calories: 150, isVeg: true, description: 'Fresh seasonal fruits — papaya, watermelon, pomegranate, and banana with a honey drizzle.', image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&q=80&w=400', stock: 20, rating: 4.6 },
+  { id: 'food-10', name: 'Water Bottle', category: 'Beverages', price: 20, isAvailable: true, prepTimeMinutes: 0, calories: 0, isVeg: true, description: '500ml packaged drinking water.', image: 'https://images.unsplash.com/photo-1560023907-5f339617ea55?auto=format&fit=crop&q=80&w=400', stock: 100, rating: 4.0 },
+  { id: 'food-11', name: 'Veg Thali', category: 'Meals', price: 110, isAvailable: true, prepTimeMinutes: 8, calories: 650, isVeg: true, description: 'Complete meal with 3 rotis, dal tadka, paneer sabzi, jeera rice, salad, and papad.', image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&q=80&w=400', stock: 25, rating: 4.9 },
+  { id: 'food-12', name: 'Masala Chai', category: 'Beverages', price: 15, isAvailable: true, prepTimeMinutes: 3, calories: 60, isVeg: true, description: 'Authentic spiced tea brewed with ginger, cardamom, and fresh milk.', image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&q=80&w=400', stock: 80, rating: 4.9 },
+];
+
+// Valid status transitions
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  'PENDING_PAYMENT': ['PAID', 'CANCELLED'],
+  'PAID': ['CONFIRMED', 'CANCELLED'],
+  'CONFIRMED': ['PREPARING', 'CANCELLED'],
+  'PREPARING': ['READY'],
+  'READY': ['COMPLETED'],
+  'COMPLETED': [],
+  'CANCELLED': []
+};
+
+function generateSecureToken(): string {
+  const bytes = crypto.randomBytes(6);
+  const code = bytes.toString('hex').toUpperCase();
+  return `${code.slice(0,4)}-${code.slice(4,8)}-${code.slice(8,12)}`;
+}
+
+function generateOrderNumber(): string {
+  orderSeq++;
+  const year = new Date().getFullYear();
+  return `SC-${year}-${String(orderSeq).padStart(6, '0')}`;
+}
+
+function generateTransactionRef(type: 'TXN' | 'REFUND'): string {
+  paymentSeq++;
+  const year = new Date().getFullYear();
+  return `DEMO-${type}-${year}-${String(paymentSeq).padStart(6, '0')}`;
+}
+
+// Seed demo orders for dashboard demonstration
+function seedDemoOrders() {
+  const now = new Date();
+  const demoOrders: ServerCanteenOrder[] = [
+    { id: 'demo-ord-001', userEmail: 'student1@sathaye.edu', orderNumber: 'SC-2026-000001', items: [{ itemId: 'food-6', name: 'Veg Biryani', quantity: 1, price: 90 }, { itemId: 'food-12', name: 'Masala Chai', quantity: 1, price: 15 }], subtotal: 105, convenienceFee: 0, totalAmount: 105, status: 'COMPLETED', paymentStatus: 'PAID_SANDBOX', paymentMethod: 'Demo UPI', pickupSlot: '12:00 PM – 12:15 PM', customerNote: '', tokenCode: 'DEMO-USED-1', createdAt: new Date(now.getTime() - 3600000 * 4).toISOString(), updatedAt: new Date(now.getTime() - 3600000 * 3).toISOString() },
+    { id: 'demo-ord-002', userEmail: 'student2@sathaye.edu', orderNumber: 'SC-2026-000002', items: [{ itemId: 'food-1', name: 'Masala Sandwich', quantity: 2, price: 45 }], subtotal: 90, convenienceFee: 0, totalAmount: 90, status: 'READY', paymentStatus: 'PAID_SANDBOX', paymentMethod: 'Demo Card', pickupSlot: '12:15 PM – 12:30 PM', customerNote: '', tokenCode: generateSecureToken(), createdAt: new Date(now.getTime() - 3600000 * 2).toISOString(), updatedAt: new Date(now.getTime() - 3600000).toISOString() },
+    { id: 'demo-ord-003', userEmail: 'student3@sathaye.edu', orderNumber: 'SC-2026-000003', items: [{ itemId: 'food-3', name: 'Paneer Roll', quantity: 1, price: 70 }, { itemId: 'food-7', name: 'Cold Coffee', quantity: 1, price: 60 }], subtotal: 130, convenienceFee: 0, totalAmount: 130, status: 'PREPARING', paymentStatus: 'PAID_SANDBOX', paymentMethod: 'Demo Wallet', pickupSlot: '12:30 PM – 12:45 PM', customerNote: 'Extra spicy please', tokenCode: generateSecureToken(), createdAt: new Date(now.getTime() - 3600000).toISOString(), updatedAt: new Date(now.getTime() - 1800000).toISOString() },
+    { id: 'demo-ord-004', userEmail: 'student4@sathaye.edu', orderNumber: 'SC-2026-000004', items: [{ itemId: 'food-4', name: 'Poha', quantity: 1, price: 35 }], subtotal: 35, convenienceFee: 0, totalAmount: 35, status: 'CONFIRMED', paymentStatus: 'PAID_SANDBOX', paymentMethod: 'Demo UPI', pickupSlot: '12:45 PM – 01:00 PM', customerNote: '', tokenCode: generateSecureToken(), createdAt: new Date(now.getTime() - 1800000).toISOString(), updatedAt: new Date(now.getTime() - 900000).toISOString() },
+    { id: 'demo-ord-005', userEmail: 'student5@sathaye.edu', orderNumber: 'SC-2026-000005', items: [{ itemId: 'food-11', name: 'Veg Thali', quantity: 1, price: 110 }], subtotal: 110, convenienceFee: 0, totalAmount: 110, status: 'CANCELLED', paymentStatus: 'REFUNDED', paymentMethod: 'Demo Card', pickupSlot: '01:00 PM – 01:15 PM', customerNote: '', tokenCode: 'DEMO-CANCELLED-1', createdAt: new Date(now.getTime() - 7200000).toISOString(), updatedAt: new Date(now.getTime() - 6000000).toISOString() },
+  ];
+
+  CANTEEN_ORDERS = [...demoOrders];
+
+  // Create corresponding tokens for active demo orders
+  for (const order of demoOrders) {
+    if (order.status !== 'CANCELLED') {
+      MEAL_TOKENS.push({
+        id: 'tk-' + order.id,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        tokenCode: order.tokenCode,
+        status: order.status === 'COMPLETED' ? 'USED' : 'ACTIVE',
+        validFrom: order.createdAt,
+        validUntil: new Date(new Date(order.createdAt).getTime() + 3600000 * 2).toISOString(),
+        scannedBy: order.status === 'COMPLETED' ? 'canteen@sathaye.edu' : null,
+        scannedAt: order.status === 'COMPLETED' ? order.updatedAt : null,
+        createdAt: order.createdAt
+      });
+    }
+    CANTEEN_PAYMENTS.push({
+      id: 'pay-' + order.id,
+      orderId: order.id,
+      transactionReference: generateTransactionRef(order.status === 'CANCELLED' ? 'REFUND' : 'TXN'),
+      paymentMethod: order.paymentMethod,
+      amount: order.totalAmount,
+      status: order.paymentStatus === 'REFUNDED' ? 'REFUNDED' : 'SUCCESS',
+      paidAt: order.createdAt,
+      createdAt: order.createdAt
+    });
+  }
+}
+
+seedDemoOrders();
+
+// 5. Canteen API Routes
+
+// 5a. Get full menu
+app.get('/api/canteen/menu', (req: Request, res: Response) => {
+  res.json({ items: CANTEEN_MENU });
+});
+
+// 5b. Get queue status
+app.get('/api/canteen/queue', (req: Request, res: Response) => {
+  res.json({ queue: CANTEEN_QUEUE });
+});
+
+// 5c. Update queue (staff only)
+app.patch('/api/canteen/queue', (req: Request, res: Response) => {
+  const { queueLength, estimatedWaitMins, status, staffEmail } = req.body;
+  if (queueLength !== undefined) CANTEEN_QUEUE.queueLength = Math.max(0, Number(queueLength));
+  if (estimatedWaitMins !== undefined) CANTEEN_QUEUE.estimatedWaitMins = Math.max(0, Number(estimatedWaitMins));
+  if (status) CANTEEN_QUEUE.status = status;
+  CANTEEN_QUEUE.updatedAt = new Date().toISOString();
+  recordAudit(staffEmail || 'canteen@sathaye.edu', 'CANTEEN', 'QUEUE_UPDATED', 'canteen_queue', CANTEEN_QUEUE);
+  res.json({ success: true, queue: CANTEEN_QUEUE });
+});
+
+// 5d. Place order (creates with PENDING_PAYMENT status)
+app.post('/api/canteen/order', (req: Request, res: Response) => {
+  const { items, userEmail, pickupSlot, customerNote } = req.body;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Cart is empty.' });
+  }
+
+  // Server-side price validation and stock check
+  let calculatedSubtotal = 0;
+  const verifiedItems: Array<{ itemId: string; name: string; quantity: number; price: number }> = [];
+  const stockErrors: string[] = [];
+
+  for (const item of items) {
+    const menuItem = CANTEEN_MENU.find(m => m.id === item.itemId);
+    if (!menuItem) {
+      return res.status(400).json({ error: `Menu item ${item.itemId} not found.` });
+    }
+    if (!menuItem.isAvailable) {
+      return res.status(400).json({ error: `${menuItem.name} is currently unavailable.` });
+    }
+    const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+    if (menuItem.stock < qty) {
+      stockErrors.push(`${menuItem.name}: only ${menuItem.stock} left (requested ${qty})`);
+    }
+    calculatedSubtotal += menuItem.price * qty;
+    verifiedItems.push({ itemId: item.itemId, name: menuItem.name, quantity: qty, price: menuItem.price });
+  }
+
+  if (stockErrors.length > 0) {
+    return res.status(409).json({ error: 'Insufficient stock', details: stockErrors });
+  }
+
+  const orderNumber = generateOrderNumber();
+  const convenienceFee = 0; // Could add small fee for high-value orders
+
+  const newOrder: ServerCanteenOrder = {
+    id: 'ord-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex'),
+    userEmail: userEmail || 'student@sathaye.edu',
+    orderNumber,
+    items: verifiedItems,
+    subtotal: calculatedSubtotal,
+    convenienceFee,
+    totalAmount: calculatedSubtotal + convenienceFee,
+    status: 'PENDING_PAYMENT',
+    paymentStatus: 'PENDING',
+    paymentMethod: '',
+    pickupSlot: pickupSlot || '',
+    customerNote: customerNote || '',
+    tokenCode: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  CANTEEN_ORDERS.unshift(newOrder);
+  recordAudit(userEmail || 'student@sathaye.edu', 'STUDENT', 'ORDER_CREATED', 'canteen_orders', { orderNumber, totalAmount: newOrder.totalAmount });
+
+  res.json({ success: true, order: newOrder });
+});
+
+// 5e. Demo Payment
+app.post('/api/canteen/pay', (req: Request, res: Response) => {
+  const { orderId, paymentMethod, simulateFailure } = req.body;
+
+  const order = CANTEEN_ORDERS.find(o => o.id === orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+  if (order.status !== 'PENDING_PAYMENT') {
+    return res.status(400).json({ error: `Order is in ${order.status} state, cannot process payment.` });
+  }
+
+  // Simulate failure: 10% chance or explicit request
+  const shouldFail = simulateFailure === true || (!simulateFailure && Math.random() < 0.1);
+
+  if (shouldFail) {
+    const failedPayment: ServerCanteenPayment = {
+      id: 'pay-' + Date.now(),
+      orderId: order.id,
+      transactionReference: generateTransactionRef('TXN'),
+      paymentMethod: paymentMethod || 'Demo Card',
+      amount: order.totalAmount,
+      status: 'FAILED',
+      paidAt: null,
+      createdAt: new Date().toISOString()
+    };
+    CANTEEN_PAYMENTS.push(failedPayment);
+    order.paymentStatus = 'FAILED';
+    order.updatedAt = new Date().toISOString();
+
+    recordAudit(order.userEmail, 'STUDENT', 'PAYMENT_FAILED', 'canteen_payments', { orderNumber: order.orderNumber, ref: failedPayment.transactionReference });
+
+    return res.json({
+      success: false,
+      error: 'Payment failed. Please try again.',
+      payment: failedPayment
+    });
+  }
+
+  // Re-validate stock before finalizing payment
+  for (const item of order.items) {
+    const menuItem = CANTEEN_MENU.find(m => m.id === item.itemId);
+    if (menuItem && menuItem.stock < item.quantity) {
+      return res.status(409).json({ error: `${menuItem.name} is now out of stock. Please modify your order.` });
+    }
+  }
+
+  // Deduct stock atomically
+  for (const item of order.items) {
+    const menuItem = CANTEEN_MENU.find(m => m.id === item.itemId);
+    if (menuItem) {
+      menuItem.stock = Math.max(0, menuItem.stock - item.quantity);
+      if (menuItem.stock === 0) menuItem.isAvailable = false;
+    }
+  }
+
+  // Create payment record
+  const transRef = generateTransactionRef('TXN');
+  const payment: ServerCanteenPayment = {
+    id: 'pay-' + Date.now(),
+    orderId: order.id,
+    transactionReference: transRef,
+    paymentMethod: paymentMethod || 'Demo Card',
+    amount: order.totalAmount,
+    status: 'SUCCESS',
+    paidAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  };
+  CANTEEN_PAYMENTS.push(payment);
+
+  // Generate secure meal token
+  const tokenCode = generateSecureToken();
+  const now = new Date();
+  const validUntil = new Date(now.getTime() + 2 * 3600000); // 2 hours validity
+
+  const mealToken: ServerMealToken = {
+    id: 'tk-' + Date.now(),
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    tokenCode,
+    status: 'ACTIVE',
+    validFrom: now.toISOString(),
+    validUntil: validUntil.toISOString(),
+    scannedBy: null,
+    scannedAt: null,
+    createdAt: now.toISOString()
+  };
+  MEAL_TOKENS.push(mealToken);
+
+  // Update order
+  order.status = 'CONFIRMED';
+  order.paymentStatus = 'PAID_SANDBOX';
+  order.paymentMethod = paymentMethod || 'Demo Card';
+  order.tokenCode = tokenCode;
+  order.updatedAt = now.toISOString();
+
+  // Update queue
+  CANTEEN_QUEUE.queueLength = Math.max(0, CANTEEN_QUEUE.queueLength + 1);
+  CANTEEN_QUEUE.estimatedWaitMins = CANTEEN_QUEUE.queueLength * 2;
+  CANTEEN_QUEUE.updatedAt = now.toISOString();
+
+  recordAudit(order.userEmail, 'STUDENT', 'PAYMENT_SUCCESS', 'canteen_payments', { orderNumber: order.orderNumber, ref: transRef, tokenCode });
+
+  res.json({
+    success: true,
+    order,
+    payment,
+    token: mealToken,
+    message: 'Payment successful! Your meal token has been generated.'
+  });
+});
+
+// 5f. Get token for order
+app.get('/api/canteen/order/:id/token', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const token = MEAL_TOKENS.find(t => t.orderId === id);
+  const order = CANTEEN_ORDERS.find(o => o.id === id);
+  if (!token || !order) {
+    return res.status(404).json({ error: 'Token not found for this order.' });
+  }
+  res.json({ token, order });
+});
+
+// 5g. Verify token (scan)
+app.post('/api/canteen/verify-token', (req: Request, res: Response) => {
+  const { tokenCode, staffEmail } = req.body;
+  if (!tokenCode) {
+    return res.status(400).json({ error: 'Token code is required.' });
+  }
+
+  const cleanCode = tokenCode.trim().toUpperCase();
+  const token = MEAL_TOKENS.find(t => t.tokenCode === cleanCode);
+
+  if (!token) {
+    return res.json({ valid: false, reason: 'Invalid token. This meal token does not exist in our system.' });
+  }
+
+  const order = CANTEEN_ORDERS.find(o => o.id === token.orderId);
+  if (!order) {
+    return res.json({ valid: false, reason: 'Order associated with this token was not found.' });
+  }
+
+  // Check token status
+  if (token.status === 'USED') {
+    return res.json({ valid: false, reason: 'This meal token has already been used.', token, order });
+  }
+  if (token.status === 'CANCELLED') {
+    return res.json({ valid: false, reason: 'This meal token has been cancelled.', token, order });
+  }
+  if (token.status === 'EXPIRED') {
+    return res.json({ valid: false, reason: 'This meal token has expired.', token, order });
+  }
+
+  // Check expiration
+  if (new Date() > new Date(token.validUntil)) {
+    token.status = 'EXPIRED';
+    return res.json({ valid: false, reason: 'This meal token has expired.', token, order });
+  }
+
+  // Check payment
+  if (order.paymentStatus !== 'PAID_SANDBOX' && order.paymentStatus !== 'CASH_AT_COUNTER') {
+    return res.json({ valid: false, reason: 'Payment for this order is incomplete.', token, order });
+  }
+
+  // Check order not cancelled
+  if (order.status === 'CANCELLED') {
+    return res.json({ valid: false, reason: 'This order has been cancelled.', token, order });
+  }
+
+  recordAudit(staffEmail || 'canteen@sathaye.edu', 'CANTEEN', 'TOKEN_SCANNED', 'canteen_meal_tokens', { tokenCode: cleanCode, orderNumber: order.orderNumber });
+
+  res.json({
+    valid: true,
+    token,
+    order,
+    message: 'Token verified successfully.'
+  });
+});
+
+// 5h. Confirm handover (complete order)
+app.post('/api/canteen/handover', (req: Request, res: Response) => {
+  const { tokenCode, staffEmail } = req.body;
+  if (!tokenCode) {
+    return res.status(400).json({ error: 'Token code is required.' });
+  }
+
+  const cleanCode = tokenCode.trim().toUpperCase();
+  const token = MEAL_TOKENS.find(t => t.tokenCode === cleanCode);
+
+  if (!token) {
+    return res.status(404).json({ error: 'Token not found.' });
+  }
+
+  // Atomic double-scan protection
+  if (token.status === 'USED') {
+    return res.status(409).json({
+      error: 'This meal token has already been used.',
+      alreadyUsed: true,
+      scannedAt: token.scannedAt,
+      scannedBy: token.scannedBy
+    });
+  }
+
+  if (token.status !== 'ACTIVE') {
+    return res.status(400).json({ error: `Token is in ${token.status} state and cannot be used for handover.` });
+  }
+
+  const order = CANTEEN_ORDERS.find(o => o.id === token.orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'Associated order not found.' });
+  }
+
+  // Mark token as used (atomic)
+  const now = new Date().toISOString();
+  token.status = 'USED';
+  token.scannedBy = staffEmail || 'canteen@sathaye.edu';
+  token.scannedAt = now;
+
+  // Complete order
+  order.status = 'COMPLETED';
+  order.updatedAt = now;
+
+  // Update queue
+  CANTEEN_QUEUE.queueLength = Math.max(0, CANTEEN_QUEUE.queueLength - 1);
+  CANTEEN_QUEUE.estimatedWaitMins = CANTEEN_QUEUE.queueLength * 2;
+  CANTEEN_QUEUE.updatedAt = now;
+
+  recordAudit(staffEmail || 'canteen@sathaye.edu', 'CANTEEN', 'ORDER_HANDOVER_COMPLETED', 'canteen_orders', {
+    orderNumber: order.orderNumber,
+    tokenCode: cleanCode,
+    completedAt: now
+  });
+
+  res.json({ success: true, order, token, message: 'Handover confirmed. Order completed.' });
+});
+
+// 5i. Update order status (staff)
+app.patch('/api/canteen/order/:id/status', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status, staffEmail } = req.body;
+  const order = CANTEEN_ORDERS.find(o => o.id === id || o.orderNumber === id);
+
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  // Validate transition
+  const allowed = VALID_TRANSITIONS[order.status] || [];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({
+      error: `Invalid status transition: ${order.status} → ${status}`,
+      allowed
+    });
+  }
+
+  const oldStatus = order.status;
+  order.status = status;
+  order.updatedAt = new Date().toISOString();
+
+  recordAudit(staffEmail || 'canteen@sathaye.edu', 'CANTEEN', 'ORDER_STATUS_CHANGED', 'canteen_orders', {
+    orderNumber: order.orderNumber,
+    oldStatus,
+    newStatus: status
+  });
+
+  res.json({ success: true, order });
+});
+
+// 5j. Cancel order
+app.post('/api/canteen/order/:id/cancel', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { userEmail, reason } = req.body;
+  const order = CANTEEN_ORDERS.find(o => o.id === id);
+
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  // Cancellation rules
+  const cancellableStatuses = ['PENDING_PAYMENT', 'PAID', 'CONFIRMED'];
+  if (!cancellableStatuses.includes(order.status)) {
+    return res.status(400).json({
+      error: `Order in ${order.status} state cannot be cancelled.`,
+      cancellable: false
+    });
+  }
+
+  const now = new Date().toISOString();
+  order.status = 'CANCELLED';
+  order.updatedAt = now;
+
+  // Cancel associated token
+  const token = MEAL_TOKENS.find(t => t.orderId === order.id);
+  if (token) {
+    token.status = 'CANCELLED';
+  }
+
+  // Restore stock
+  for (const item of order.items) {
+    const menuItem = CANTEEN_MENU.find(m => m.id === item.itemId);
+    if (menuItem) {
+      menuItem.stock += item.quantity;
+      if (menuItem.stock > 0) menuItem.isAvailable = true;
+    }
+  }
+
+  // If paid, create refund
+  let refundPayment: ServerCanteenPayment | null = null;
+  if (order.paymentStatus === 'PAID_SANDBOX') {
+    order.paymentStatus = 'REFUNDED';
+    refundPayment = {
+      id: 'pay-ref-' + Date.now(),
+      orderId: order.id,
+      transactionReference: generateTransactionRef('REFUND'),
+      paymentMethod: order.paymentMethod,
+      amount: order.totalAmount,
+      status: 'REFUNDED',
+      paidAt: null,
+      createdAt: now
+    };
+    CANTEEN_PAYMENTS.push(refundPayment);
+  }
+
+  // Update queue
+  CANTEEN_QUEUE.queueLength = Math.max(0, CANTEEN_QUEUE.queueLength - 1);
+  CANTEEN_QUEUE.estimatedWaitMins = CANTEEN_QUEUE.queueLength * 2;
+  CANTEEN_QUEUE.updatedAt = now;
+
+  recordAudit(userEmail || 'student@sathaye.edu', order.paymentMethod ? 'CANTEEN' : 'STUDENT', 'ORDER_CANCELLED', 'canteen_orders', {
+    orderNumber: order.orderNumber,
+    reason: reason || 'User requested cancellation',
+    refundRef: refundPayment?.transactionReference
+  });
+
+  res.json({ success: true, order, refund: refundPayment });
+});
+
+// 5k. Get orders (with optional filters)
+app.get('/api/canteen/orders', (req: Request, res: Response) => {
+  const { email, status, limit } = req.query;
+  let filtered = [...CANTEEN_ORDERS];
+
+  if (email) {
+    filtered = filtered.filter(o => o.userEmail.toLowerCase() === String(email).toLowerCase());
+  }
+  if (status) {
+    filtered = filtered.filter(o => o.status === String(status));
+  }
+
+  const maxResults = Math.min(Number(limit) || 50, 100);
+  filtered = filtered.slice(0, maxResults);
+
+  res.json({ orders: filtered });
+});
+
+// 5l. Analytics
+app.get('/api/canteen/analytics', (req: Request, res: Response) => {
+  const today = new Date().toISOString().split('T')[0];
+  const todayOrders = CANTEEN_ORDERS.filter(o => o.createdAt.startsWith(today));
+
+  const stats = {
+    totalOrdersToday: todayOrders.length,
+    pendingOrders: CANTEEN_ORDERS.filter(o => ['PENDING_PAYMENT', 'PAID', 'CONFIRMED'].includes(o.status)).length,
+    preparingOrders: CANTEEN_ORDERS.filter(o => o.status === 'PREPARING').length,
+    readyOrders: CANTEEN_ORDERS.filter(o => o.status === 'READY').length,
+    completedToday: todayOrders.filter(o => o.status === 'COMPLETED').length,
+    cancelledToday: todayOrders.filter(o => o.status === 'CANCELLED').length,
+    salesToday: todayOrders.filter(o => o.paymentStatus === 'PAID_SANDBOX').reduce((sum, o) => sum + o.totalAmount, 0),
+    totalSales: CANTEEN_ORDERS.filter(o => o.paymentStatus === 'PAID_SANDBOX' || o.status === 'COMPLETED').reduce((sum, o) => sum + o.totalAmount, 0),
+    avgOrderValue: CANTEEN_ORDERS.length > 0 ? Math.round(CANTEEN_ORDERS.reduce((s, o) => s + o.totalAmount, 0) / CANTEEN_ORDERS.length) : 0,
+    popularItems: getPopularItems(),
+    lowStockItems: CANTEEN_MENU.filter(m => m.stock < 10).map(m => ({ name: m.name, stock: m.stock })),
+    queue: CANTEEN_QUEUE,
+    completionRate: CANTEEN_ORDERS.length > 0 ? Math.round(CANTEEN_ORDERS.filter(o => o.status === 'COMPLETED').length / CANTEEN_ORDERS.length * 100) : 0,
+    cancellationRate: CANTEEN_ORDERS.length > 0 ? Math.round(CANTEEN_ORDERS.filter(o => o.status === 'CANCELLED').length / CANTEEN_ORDERS.length * 100) : 0,
+  };
+
+  res.json(stats);
+});
+
+function getPopularItems(): Array<{ name: string; count: number }> {
+  const counts: Record<string, { name: string; count: number }> = {};
+  for (const order of CANTEEN_ORDERS) {
+    if (order.status === 'CANCELLED') continue;
+    for (const item of order.items) {
+      if (!counts[item.itemId]) counts[item.itemId] = { name: item.name, count: 0 };
+      counts[item.itemId].count += item.quantity;
+    }
+  }
+  return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+}
+
+// 5m. Update menu item (staff)
+app.patch('/api/canteen/menu/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { price, stock, isAvailable, name, description, staffEmail } = req.body;
+  const item = CANTEEN_MENU.find(m => m.id === id);
+
+  if (!item) {
+    return res.status(404).json({ error: 'Menu item not found.' });
+  }
+
+  const oldPrice = item.price;
+  if (price !== undefined) item.price = Number(price);
+  if (stock !== undefined) item.stock = Math.max(0, Number(stock));
+  if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+  if (name) item.name = name;
+  if (description) item.description = description;
+
+  recordAudit(staffEmail || 'canteen@sathaye.edu', 'CANTEEN', 'MENU_ITEM_UPDATED', 'canteen_items', {
+    itemId: id, oldPrice, newPrice: item.price, stock: item.stock
+  });
+
+  res.json({ success: true, item });
+});
+
+
 interface BookLoan {
   id: string;
   bookId: string;
@@ -659,7 +1311,9 @@ async function setupVite() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SATHAYE UCM] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[SATHAYE UCM] Server running at:`);
+    console.log(`  ➜ Local:   http://localhost:${PORT}/`);
+    console.log(`  ➜ Network: http://127.0.0.1:${PORT}/`);
   });
 }
 
