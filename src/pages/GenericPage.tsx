@@ -1,0 +1,111 @@
+import { useParams, Link } from 'react-router-dom';
+import { ChevronRight, FileText, Download } from 'lucide-react';
+
+export default function GenericPage() {
+  const { slug } = useParams();
+  
+  const title = slug ? slug.split('-').join(' ') : 'Page';
+
+  if (!slug) return <div className="p-8 text-center">Page not found</div>;
+
+  return (
+    <div className="bg-white min-h-screen font-sans text-gray-800">
+      {/* Page Header / Banner */}
+      <div className="bg-[#003366] text-white py-12 md:py-16 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=1920')] bg-cover bg-center"></div>
+        <div className="max-w-[1140px] mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <h1 className="text-3xl md:text-4xl font-extrabold uppercase tracking-tight capitalize">{title}</h1>
+          
+          {/* Breadcrumbs */}
+          <nav className="flex text-sm mt-4 text-gray-300 font-medium">
+            <Link to="/" className="hover:text-yellow-400 transition-colors">Home</Link>
+            <span className="mx-2 text-gray-500">/</span>
+            <span className="text-yellow-400 capitalize">{title}</span>
+          </nav>
+        </div>
+      </div>
+
+      <div className="max-w-[1140px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          
+          {/* Sidebar */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white shadow rounded border border-gray-200 overflow-hidden">
+              <div className="bg-gray-100 px-4 py-3 border-b border-gray-200">
+                <h3 className="font-bold text-[#003366] uppercase tracking-wide text-sm">Related Links</h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                <li className="px-4 py-3 hover:bg-yellow-50 transition-colors cursor-pointer">
+                  <Link to="/page/3/about-college" className="text-sm font-medium text-gray-700 hover:text-[#003366] flex items-center">
+                    <ChevronRight size={14} className="text-yellow-500 mr-2" /> About College
+                  </Link>
+                </li>
+                <li className="px-4 py-3 hover:bg-yellow-50 transition-colors cursor-pointer">
+                  <Link to="/page/90/vision-mission-objectives" className="text-sm font-medium text-gray-700 hover:text-[#003366] flex items-center">
+                    <ChevronRight size={14} className="text-yellow-500 mr-2" /> Vision & Mission
+                  </Link>
+                </li>
+                <li className="px-4 py-3 hover:bg-yellow-50 transition-colors cursor-pointer">
+                  <Link to="/page/162/facilities" className="text-sm font-medium text-gray-700 hover:text-[#003366] flex items-center">
+                    <ChevronRight size={14} className="text-yellow-500 mr-2" /> Facilities
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            
+            <div className="bg-[#1e293b] text-white p-6 rounded shadow border-t-4 border-yellow-500">
+              <h3 className="font-bold uppercase tracking-wider mb-2 text-yellow-400">Need Help?</h3>
+              <p className="text-sm text-gray-300 mb-4 leading-relaxed">Contact our administration office for any queries regarding admissions or courses.</p>
+              <a href="tel:+919321347772" className="block text-center bg-white text-[#1e293b] font-bold py-2 rounded hover:bg-gray-200 transition-colors text-sm uppercase tracking-wide">Contact Us</a>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            <div className="bg-white shadow rounded border border-gray-200 p-8">
+              <h2 className="text-2xl font-bold text-[#003366] mb-6 capitalize border-b border-gray-200 pb-4">{title}</h2>
+              
+              <div className="prose max-w-none text-gray-700">
+                <p className="lead text-lg mb-6 text-gray-600">
+                  Welcome to the {title} section of Sathaye College. This page provides comprehensive information regarding our policies, procedures, and institutional frameworks.
+                </p>
+                
+                <p className="mb-6 leading-relaxed">
+                  Sathaye College, established in 1959 by the Parle Tilak Vidyalaya Association, is a reputed educational institution in Vile Parle, Mumbai. It offers a variety of courses at the Junior, Degree, and Post Graduate levels. The college is re-accredited by NAAC with an 'A' grade.
+                </p>
+                
+                <h3 className="text-xl font-bold text-[#003366] mt-8 mb-4 border-l-4 border-yellow-500 pl-3">Key Information</h3>
+                <ul className="list-none pl-0 mb-6 space-y-2">
+                  <li className="flex items-start"><span className="text-yellow-500 mr-2 mt-1 font-bold">»</span> Regularly updated curriculum in line with the National Education Policy (NEP 2020).</li>
+                  <li className="flex items-start"><span className="text-yellow-500 mr-2 mt-1 font-bold">»</span> Dedicated faculty committed to student development and academic excellence.</li>
+                  <li className="flex items-start"><span className="text-yellow-500 mr-2 mt-1 font-bold">»</span> State-of-the-art infrastructure including well-equipped laboratories and a vast library.</li>
+                  <li className="flex items-start"><span className="text-yellow-500 mr-2 mt-1 font-bold">»</span> Active promotion of co-curricular and extra-curricular activities.</li>
+                </ul>
+
+                <h3 className="text-xl font-bold text-[#003366] mt-8 mb-4 border-l-4 border-yellow-500 pl-3">Important Documents</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 not-prose">
+                  <div className="flex items-center p-4 border border-gray-200 rounded hover:border-[#003366] transition-colors group cursor-pointer bg-gray-50">
+                    <FileText size={24} className="text-[#003366] mr-3" />
+                    <div className="flex-grow">
+                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-[#003366]">Information Brochure</h4>
+                      <p className="text-xs text-gray-500 mt-1 uppercase">PDF, 2.4 MB</p>
+                    </div>
+                    <Download size={18} className="text-gray-400 group-hover:text-yellow-600" />
+                  </div>
+                  <div className="flex items-center p-4 border border-gray-200 rounded hover:border-[#003366] transition-colors group cursor-pointer bg-gray-50">
+                    <FileText size={24} className="text-[#003366] mr-3" />
+                    <div className="flex-grow">
+                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-[#003366]">Guidelines 2026-27</h4>
+                      <p className="text-xs text-gray-500 mt-1 uppercase">PDF, 1.1 MB</p>
+                    </div>
+                    <Download size={18} className="text-gray-400 group-hover:text-yellow-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

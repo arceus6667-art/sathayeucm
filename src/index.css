@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+html.high-contrast-mode {
+  filter: contrast(125%);
+}
+
+html.high-contrast-mode body {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+html.large-text-mode {
+  font-size: 112.5%; /* 18px base instead of 16px */
+}
+

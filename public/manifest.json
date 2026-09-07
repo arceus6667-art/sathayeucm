@@ -1,0 +1,16 @@
+{
+  "short_name": "Smart Sathaye",
+  "name": "Smart Sathaye Campus Platform",
+  "icons": [
+    {
+      "src": "/WhatsApp%20Image%202026-09-07%20at%209.12.07%20AM.jpeg",
+      "type": "image/jpeg",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#003366",
+  "theme_color": "#003366",
+  "display": "standalone",
+  "orientation": "portrait"
+}
