@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, MapPin, Wrench, AlertCircle, Building2, 
   Users, Coffee, ShieldAlert, BarChart3, FileText, QrCode, 
-  Clock, Bell, Radio, X
+  Clock, Bell, Radio, X, Calendar
 } from 'lucide-react';
 import { campusStore } from '../../services/campusStore';
 import AdminHeader from './admin/AdminHeader';
@@ -18,10 +18,12 @@ import AdminAnalyticsView from './admin/AdminAnalyticsView';
 import AdminReportsView from './admin/AdminReportsView';
 import AdminDigitalIDView from './admin/AdminDigitalIDView';
 import AdminAuditLogsView from './admin/AdminAuditLogsView';
+import AdminTimetableView from './admin/AdminTimetableView';
 
 export type AdminTab = 
   | 'overview' 
   | 'map' 
+  | 'timetable'
   | 'maintenance' 
   | 'complaints' 
   | 'operations' 
@@ -72,6 +74,7 @@ export default function AdminPortalView() {
   const navTabs = [
     { id: 'overview', label: 'Command Center', icon: LayoutDashboard },
     { id: 'map', label: 'Campus Map', icon: MapPin },
+    { id: 'timetable', label: 'Timetable Manager', icon: Calendar },
     { id: 'maintenance', label: 'Maintenance', icon: Wrench },
     { id: 'complaints', label: 'Complaints', icon: AlertCircle },
     { id: 'operations', label: 'Operations', icon: Building2 },
@@ -128,6 +131,9 @@ export default function AdminPortalView() {
         )}
 
         {activeTab === 'map' && <AdminCampusMap />}
+        {activeTab === 'timetable' && (
+          <AdminTimetableView onNavigateToRoomMap={(roomNum) => setActiveTab('map')} />
+        )}
         {activeTab === 'maintenance' && <AdminMaintenanceView />}
         {activeTab === 'complaints' && <AdminComplaintsView />}
         {activeTab === 'operations' && <AdminCampusOperations />}

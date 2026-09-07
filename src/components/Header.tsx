@@ -1,13 +1,29 @@
 import { Link } from 'react-router-dom';
 import { Search, Phone, Mail, Menu, X, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { siteMenu, MenuItem } from '../menuData';
+import AccessibilityTopRibbon from './AccessibilityTopRibbon';
+import { SmartCampusStore } from '../smartCampusStore';
+import { TRANSLATIONS, SupportedLanguage } from '../services/translations';
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [openMobileDropdown, setOpenMobileDropdown] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [lang, setLang] = useState<SupportedLanguage>(() => SmartCampusStore.getAccessibilityPrefs().language);
+
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      if (e.detail?.language) {
+        setLang(e.detail.language);
+      }
+    };
+    window.addEventListener('sathaye_accessibility_updated', handleUpdate);
+    return () => window.removeEventListener('sathaye_accessibility_updated', handleUpdate);
+  }, []);
+
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
 
   const toggleDropdown = (id: string) => {
     if (openDropdown === id) setOpenDropdown(null);
@@ -17,6 +33,16 @@ export default function Header() {
   const toggleMobileDropdown = (id: string) => {
     if (openMobileDropdown === id) setOpenMobileDropdown(null);
     else setOpenMobileDropdown(id);
+  };
+
+  const getTranslatedMenuTitle = (item: MenuItem): string => {
+    if (item.id === "1") return t.nav.home;
+    if (item.id === "smart-campus") return t.nav.smartCampus;
+    if (item.id === "209") return t.nav.about;
+    if (item.id === "16") return t.nav.departments;
+    if (item.id === "230") return t.nav.admissions;
+    if (item.id === "191") return t.nav.studentSection;
+    return item.type;
   };
 
   const renderDesktopMenu = (items: MenuItem[]) => {
@@ -29,7 +55,7 @@ export default function Header() {
           to={item.path || '#'}
           className="flex items-center px-4 h-12 text-[13px] font-semibold text-white uppercase tracking-wider hover:text-yellow-400 transition-colors"
         >
-          {item.type}
+          {getTranslatedMenuTitle(item)}
           {item.children && <ChevronDown size={14} className="ml-1 opacity-70" />}
         </Link>
         
@@ -77,7 +103,7 @@ export default function Header() {
             className="text-gray-800 font-medium uppercase text-sm"
             onClick={() => !item.children && setIsMobileMenuOpen(false)}
           >
-            {item.type}
+            {getTranslatedMenuTitle(item)}
           </Link>
           {item.children && (
             <button 
@@ -108,28 +134,33 @@ export default function Header() {
   };
 
   return (
-    <header className="w-full bg-white flex flex-col font-sans relative z-40 border-t-[5px] border-[#003366]">
-      {/* Top Bar */}
+    <header className="w-full bg-white flex flex-col font-sans relative z-40">
+      {/* 1. Official Red Accessibility & Social Ribbon (Reference Screenshot Match) */}
+      <AccessibilityTopRibbon />
+
+      {/* 2. Secondary Info & Quick Portal Strip */}
       <div className="bg-gray-100 border-b border-gray-200">
         <div className="max-w-[1140px] mx-auto px-4 sm:px-6 lg:px-8 h-10 flex flex-wrap items-center justify-between text-xs text-gray-600">
           <div className="flex space-x-4 items-center">
-            <span className="flex items-center hover:text-[#003366] cursor-pointer"><Phone size={14} className="mr-1" /> +91 9321347772</span>
-            <span className="flex items-center hover:text-[#003366] cursor-pointer hidden sm:flex"><Mail size={14} className="mr-1" /> sathayecollege@gmail.com</span>
-            <span className="bg-yellow-400 text-[#003366] text-[10px] font-black px-2 py-0.5 rounded uppercase hidden md:inline-block">Autonomous Campus</span>
+            <span className="flex items-center hover:text-[#003366] cursor-pointer"><Phone size={14} className="mr-1" /> {t.topRibbon.phone}</span>
+            <span className="flex items-center hover:text-[#003366] cursor-pointer hidden sm:flex"><Mail size={14} className="mr-1" /> {t.topRibbon.email}</span>
+            <span className="bg-yellow-400 text-[#003366] text-[10px] font-black px-2 py-0.5 rounded uppercase hidden md:inline-block">
+              {t.topRibbon.autonomousBadge}
+            </span>
           </div>
           <div className="flex items-center space-x-3">
-            <Link to="/map" className="hover:text-[#003366] font-semibold text-blue-700 hidden sm:block">3D Map</Link>
+            <Link to="/map" className="hover:text-[#003366] font-semibold text-blue-700 hidden sm:block">{t.nav.map}</Link>
             <span className="text-gray-300 hidden sm:block">|</span>
-            <Link to="/canteen" className="hover:text-[#003366] font-semibold hidden md:block">Canteen</Link>
+            <Link to="/canteen" className="hover:text-[#003366] font-semibold hidden md:block">{t.nav.canteen}</Link>
             <span className="text-gray-300 hidden md:block">|</span>
-            <Link to="/library" className="hover:text-[#003366] font-semibold hidden md:block">Library</Link>
+            <Link to="/library" className="hover:text-[#003366] font-semibold hidden md:block">{t.nav.library}</Link>
             <span className="text-gray-300 hidden md:block">|</span>
-            <Link to="/events" className="hover:text-[#003366] font-semibold hidden sm:block">Events</Link>
+            <Link to="/events" className="hover:text-[#003366] font-semibold hidden sm:block">{t.nav.events}</Link>
             <span className="text-gray-300 hidden sm:block">|</span>
-            <Link to="/safety" className="hover:text-red-700 font-bold text-red-600 hidden sm:block">SOS</Link>
+            <Link to="/safety" className="hover:text-red-700 font-bold text-red-600 hidden sm:block">{t.nav.sos}</Link>
             <span className="text-gray-300 hidden sm:block">|</span>
             <Link to="/portal" className="bg-[#003366] text-yellow-400 hover:bg-blue-900 px-2.5 py-1 rounded text-xs font-black uppercase tracking-wider">
-              Smart Portal
+              {t.nav.portal}
             </Link>
           </div>
         </div>

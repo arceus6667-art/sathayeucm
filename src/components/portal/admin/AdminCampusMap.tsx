@@ -1,487 +1,539 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   MapPin, Layers, Building2, Search, Filter, 
   Accessibility, CheckCircle2, AlertCircle, Wrench, Plus, 
-  Eye, Edit2, ShieldAlert, ArrowRight, X
+  Eye, Edit2, ShieldAlert, ArrowRight, X, Trash2, Save, RotateCcw,
+  Check, AlertTriangle, Navigation
 } from 'lucide-react';
-import { campusStore, CampusBuilding, CampusLocation, CampusIssue } from '../../../services/campusStore';
+import { 
+  CAMPUS_FLOORS, 
+  CampusMapMarker, 
+  campusMapService, 
+  MAP_NODES,
+  MAP_EDGES 
+} from '../../../services/mapStore';
 
 export default function AdminCampusMap() {
-  const buildings = campusStore.getBuildings();
-  const [locations, setLocations] = useState<CampusLocation[]>(campusStore.getLocations());
-  const [selectedBuildingId, setSelectedBuildingId] = useState<string>('bldg-main');
-  const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeLocation, setActiveLocation] = useState<CampusLocation | null>(null);
-  const [showAddRoomModal, setShowAddRoomModal] = useState(false);
+  const [markers, setMarkers] = useState<CampusMapMarker[]>(campusMapService.getMarkers());
+  const [selectedFloorId, setSelectedFloorId] = useState<number>(0); // 0=Ground by default
+  const [selectedMarker, setSelectedMarker] = useState<CampusMapMarker | null>(null);
+  
+  // Placement / Edit mode
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingMarker, setEditingMarker] = useState<Partial<CampusMapMarker>>({
+    floor: 0,
+    category: 'ACADEMIC',
+    isAccessible: true,
+    isVerified: true
+  });
+  const [clickToPlaceMode, setClickToPlaceMode] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
-  // New room form state
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomCode, setNewRoomCode] = useState('');
-  const [newRoomType, setNewRoomType] = useState<CampusLocation['type']>('classroom');
-  const [newRoomCapacity, setNewRoomCapacity] = useState(60);
-  const [newRoomDepartment, setNewRoomDepartment] = useState('Information Technology');
-  const [newRoomFloor, setNewRoomFloor] = useState(1);
-  const [newRoomAccessible, setNewRoomAccessible] = useState(true);
-  const [newRoomDesc, setNewRoomDesc] = useState('');
-
-  const issues = campusStore.getCampusIssues();
-
-  const selectedBuilding = buildings.find(b => b.id === selectedBuildingId) || buildings[0];
-
-  const filteredLocations = useMemo(() => {
-    return locations.filter(loc => {
-      const matchBldg = loc.buildingId === selectedBuildingId;
-      const matchFloor = selectedFloor === 'all' || loc.floorNumber === selectedFloor;
-      const matchType = selectedType === 'all' || loc.type === selectedType;
-      const matchSearch = loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        loc.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        loc.department?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchBldg && matchFloor && matchType && matchSearch;
+  // Subscribe to changes
+  useEffect(() => {
+    const unsub = campusMapService.subscribe(() => {
+      setMarkers(campusMapService.getMarkers());
     });
-  }, [locations, selectedBuildingId, selectedFloor, selectedType, searchQuery]);
+    return unsub;
+  }, []);
 
-  const handleToggleStatus = (locId: string, currentStatus: CampusLocation['status']) => {
-    const nextStatus: CampusLocation['status'] = 
-      currentStatus === 'available' ? 'occupied' : currentStatus === 'occupied' ? 'maintenance' : 'available';
-    campusStore.updateLocation(locId, { status: nextStatus });
-    setLocations(campusStore.getLocations());
-    if (activeLocation?.id === locId) {
-      setActiveLocation(prev => prev ? { ...prev, status: nextStatus } : null);
+  const activeFloor = useMemo(() => {
+    return CAMPUS_FLOORS.find(f => f.id === selectedFloorId) || CAMPUS_FLOORS[1];
+  }, [selectedFloorId]);
+
+  const floorMarkers = useMemo(() => {
+    if (selectedFloorId === -1) return markers;
+    return markers.filter(m => m.floor === selectedFloorId);
+  }, [markers, selectedFloorId]);
+
+  // Click on map image to capture (xPercent, yPercent)
+  const handleMapImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (clickToPlaceMode) {
+      setEditingMarker({
+        id: 'm-' + Date.now(),
+        name: 'New Campus Marker',
+        roomNumber: '',
+        floor: selectedFloorId === -1 ? 0 : selectedFloorId,
+        category: 'ACADEMIC',
+        xPercent: Math.round(x * 10) / 10,
+        yPercent: Math.round(y * 10) / 10,
+        isAccessible: true,
+        isVerified: true
+      });
+      setIsEditModalOpen(true);
+      setClickToPlaceMode(false);
     }
   };
 
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleSaveMarker = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRoomName || !newRoomCode) return;
+    if (!editingMarker.name) return;
 
-    const created = campusStore.addLocation({
-      name: newRoomName,
-      code: newRoomCode,
-      type: newRoomType,
-      buildingId: selectedBuildingId,
-      buildingName: selectedBuilding.name,
-      floorNumber: Number(newRoomFloor),
-      floorLabel: `Floor ${newRoomFloor}`,
-      x: 300,
-      y: 300,
-      capacity: Number(newRoomCapacity),
-      department: newRoomDepartment,
-      isAccessible: newRoomAccessible,
-      description: newRoomDesc || 'Newly commissioned educational facility room.',
-      status: 'available'
-    });
+    const markerToSave: CampusMapMarker = {
+      id: editingMarker.id || 'm-' + Date.now(),
+      name: editingMarker.name,
+      roomNumber: editingMarker.roomNumber,
+      department: editingMarker.department,
+      category: editingMarker.category || 'ACADEMIC',
+      floor: editingMarker.floor !== undefined ? editingMarker.floor : 0,
+      xPercent: editingMarker.xPercent || 50,
+      yPercent: editingMarker.yPercent || 50,
+      isAccessible: Boolean(editingMarker.isAccessible),
+      isVerified: Boolean(editingMarker.isVerified),
+      capacity: editingMarker.capacity,
+      hasAc: editingMarker.hasAc,
+      hasProjector: editingMarker.hasProjector,
+      notes: editingMarker.notes
+    };
 
-    setLocations(campusStore.getLocations());
-    setShowAddRoomModal(false);
-    setNewRoomName('');
-    setNewRoomCode('');
-    setActiveLocation(created);
+    campusMapService.addOrUpdateMarker(markerToSave);
+    setIsEditModalOpen(false);
+    setSelectedMarker(markerToSave);
+    setStatusMessage(`Saved marker: ${markerToSave.name}`);
+    setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  const handleDeleteMarker = (id: string) => {
+    campusMapService.deleteMarker(id);
+    setSelectedMarker(null);
+    setIsEditModalOpen(false);
+    setStatusMessage('Marker removed from architectural floor plan.');
+    setTimeout(() => setStatusMessage(''), 3000);
+  };
+
+  const toggleVerification = (marker: CampusMapMarker) => {
+    const updated = { ...marker, isVerified: !marker.isVerified };
+    campusMapService.addOrUpdateMarker(updated);
+    setSelectedMarker(updated);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       
-      {/* Top Controls Bar */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Top Header Card */}
+      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Campus Spatial Map & Room Administration</h2>
-          <p className="text-xs text-gray-500">Live operational room control, occupancy override, and facility accessibility audit</p>
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search rooms, labs, auditoriums..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-[#003366]"
-            />
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.5 bg-[#003366] text-white text-[10px] font-bold rounded uppercase tracking-wider">
+              Spatial Management
+            </span>
+            <h2 className="text-lg font-bold text-gray-900">2D Campus Architectural Map Admin</h2>
           </div>
-          <button
-            onClick={() => setShowAddRoomModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#003366] hover:bg-blue-900 text-white rounded-lg text-xs font-bold transition-colors shadow-xs shrink-0"
-          >
-            <Plus size={14} />
-            <span>Add Facility Room</span>
-          </button>
+          <p className="text-xs text-gray-500">
+            Edit room pins, accessibility validation, coordinate anchors & wayfinding corridors over the official college floor plan.
+          </p>
         </div>
-      </div>
 
-      {/* Building Selector Strip */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {buildings.map((b) => (
+        <div className="flex items-center space-x-2">
           <button
-            key={b.id}
-            onClick={() => {
-              setSelectedBuildingId(b.id);
-              setSelectedFloor('all');
-            }}
-            className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 border ${
-              selectedBuildingId === b.id
-                ? 'bg-[#003366] text-white border-[#003366] shadow-xs'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            onClick={() => setClickToPlaceMode(!clickToPlaceMode)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm ${
+              clickToPlaceMode
+                ? 'bg-rose-600 text-white animate-pulse'
+                : 'bg-[#003366] text-white hover:bg-[#002244]'
             }`}
           >
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.color }} />
-            <span>{b.name}</span>
+            <Plus size={15} />
+            <span>{clickToPlaceMode ? 'Click Map to Place...' : 'Add Marker to Map'}</span>
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Main Map Workspace */}
+      {statusMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg flex items-center space-x-2">
+          <CheckCircle2 size={16} />
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {/* Main Studio Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left 2 Columns: Isometric Spatial Sector View */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Left 2 Cols: Interactive Map Visualizer */}
+        <div className="lg:col-span-2 bg-slate-900 rounded-xl p-4 border border-slate-700 shadow-sm flex flex-col">
           
-          {/* Floor & Type Filter Bar */}
-          <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-1">
-              <span className="text-gray-400 font-bold uppercase text-[10px] mr-1">Floor:</span>
-              <button
-                onClick={() => setSelectedFloor('all')}
-                className={`px-2.5 py-1 rounded-md font-bold ${
-                  selectedFloor === 'all' ? 'bg-[#003366] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All Floors
-              </button>
-              {selectedBuilding.floors.map((f) => (
+          {/* Floor Toolbar */}
+          <div className="flex items-center justify-between mb-3 text-xs">
+            <div className="flex items-center space-x-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
+              {CAMPUS_FLOORS.map(f => (
                 <button
-                  key={f}
-                  onClick={() => setSelectedFloor(f)}
-                  className={`px-2.5 py-1 rounded-md font-bold ${
-                    selectedFloor === f ? 'bg-[#003366] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  key={f.id}
+                  onClick={() => setSelectedFloorId(f.id)}
+                  className={`px-3 py-1.5 rounded text-[11px] font-bold transition-colors ${
+                    selectedFloorId === f.id
+                      ? 'bg-amber-400 text-slate-900 font-extrabold shadow-sm'
+                      : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  Floor {f}
+                  {f.code}
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-1">
-              <span className="text-gray-400 font-bold uppercase text-[10px] mr-1">Type:</span>
-              {['all', 'classroom', 'lab', 'library', 'canteen'].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setSelectedType(t)}
-                  className={`px-2 py-0.5 rounded capitalize font-semibold ${
-                    selectedType === t ? 'bg-blue-100 text-[#003366] font-bold' : 'text-gray-500 hover:bg-gray-100'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
+            <div className="text-[11px] text-slate-300">
+              {clickToPlaceMode ? (
+                <span className="text-amber-400 font-bold animate-pulse">
+                  Targeting: Click anywhere on the plan to anchor a coordinate
+                </span>
+              ) : (
+                <span>Click any pin to edit metadata</span>
+              )}
             </div>
           </div>
 
-          {/* Interactive Room Grid / Spatial Layout */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between text-xs text-gray-500 pb-2 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <Building2 size={16} className="text-[#003366]" />
-                <span className="font-bold text-gray-900">{selectedBuilding.name}</span>
-                <span className="text-gray-400">• {filteredLocations.length} locations rendered</span>
-              </div>
-              <div className="flex items-center gap-3 text-[11px]">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Available</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> In Session</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Maintenance</span>
-              </div>
-            </div>
+          {/* Master Image Canvas Container */}
+          <div 
+            onClick={handleMapImageClick}
+            className={`relative rounded-lg overflow-hidden border border-slate-700 select-none bg-white ${
+              clickToPlaceMode ? 'cursor-crosshair ring-2 ring-amber-400' : 'cursor-default'
+            }`}
+          >
+            <img
+              src="/Screenshot%202026-09-07%20114708.png"
+              alt="Campus Master Floor Plan"
+              className="w-full h-auto block select-none pointer-events-none"
+              draggable={false}
+            />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {filteredLocations.map((loc) => {
-                const roomIssues = issues.filter(i => i.locationId === loc.id && i.status !== 'Resolved');
-                const isSelected = activeLocation?.id === loc.id;
+            {/* SVG Overlay for Quadrant & Connecting Graph */}
+            <svg 
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {selectedFloorId !== -1 && (
+                <rect
+                  x={activeFloor.quadrant.minX}
+                  y={activeFloor.quadrant.minY}
+                  width={activeFloor.quadrant.maxX - activeFloor.quadrant.minX}
+                  height={activeFloor.quadrant.maxY - activeFloor.quadrant.minY}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="0.75"
+                  strokeDasharray="2, 1"
+                />
+              )}
 
+              {/* Wayfinding Edges */}
+              {MAP_EDGES.map((e, idx) => {
+                const n1 = MAP_NODES.find(n => n.id === e.fromNodeId);
+                const n2 = MAP_NODES.find(n => n.id === e.toNodeId);
+                if (!n1 || !n2) return null;
+                // Only render if both on current floor (or if all floors)
+                if (selectedFloorId !== -1 && (n1.floor !== selectedFloorId || n2.floor !== selectedFloorId)) return null;
                 return (
-                  <div
-                    key={loc.id}
-                    onClick={() => setActiveLocation(loc)}
-                    className={`p-3.5 rounded-xl border transition-all cursor-pointer relative ${
-                      isSelected 
-                        ? 'border-[#003366] ring-2 ring-[#003366]/20 bg-blue-50/40 shadow-sm'
-                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-xs'
-                    }`}
-                  >
-                    {roomIssues.length > 0 && (
-                      <span className="absolute top-3 right-3 px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-bold flex items-center gap-0.5">
-                        <Wrench size={10} />
-                        <span>Issue ({roomIssues.length})</span>
-                      </span>
-                    )}
-
-                    <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
-                      <span>{loc.code}</span>
-                      <span>Floor {loc.floorNumber}</span>
-                    </div>
-
-                    <h4 className="text-xs font-bold text-gray-900 mt-1 line-clamp-1">{loc.name}</h4>
-                    <p className="text-[11px] text-gray-500 mt-0.5">{loc.department || 'General Academic'}</p>
-
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 text-[10px]">
-                      <span className="text-gray-600 font-semibold">Cap: {loc.capacity} seats</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleStatus(loc.id, loc.status);
-                        }}
-                        className={`px-2 py-0.5 rounded font-bold uppercase tracking-wider transition-colors ${
-                          loc.status === 'available'
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : loc.status === 'occupied'
-                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                            : 'bg-red-50 text-red-700 hover:bg-red-100'
-                        }`}
-                        title="Click to toggle status"
-                      >
-                        {loc.status}
-                      </button>
-                    </div>
-                  </div>
+                  <line
+                    key={idx}
+                    x1={n1.xPercent}
+                    y1={n1.yPercent}
+                    x2={n2.xPercent}
+                    y2={n2.yPercent}
+                    stroke={e.isAccessible ? '#10b981' : '#f59e0b'}
+                    strokeWidth="0.5"
+                    strokeDasharray={e.isVertical ? '1, 1' : 'none'}
+                  />
                 );
               })}
-            </div>
+            </svg>
+
+            {/* Marker Pins */}
+            {floorMarkers.map(m => {
+              const isSelected = selectedMarker?.id === m.id;
+              return (
+                <div
+                  key={m.id}
+                  style={{ left: `${m.xPercent}%`, top: `${m.yPercent}%` }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedMarker(m);
+                  }}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer z-10 transition-transform ${
+                    isSelected ? 'scale-125 z-20' : 'hover:scale-110'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center border-2 border-white text-white text-[10px] shadow ${
+                    m.isVerified ? 'bg-[#003366]' : 'bg-amber-600'
+                  }`}>
+                    {m.isVerified ? '✓' : '?'}
+                  </div>
+                  <div className="absolute top-full mt-0.5 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[8px] font-bold px-1 rounded whitespace-nowrap">
+                    {m.roomNumber || m.name.split(' ')[0]}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Showing {floorMarkers.length} rooms & points on Floor: {activeFloor.name}</span>
+            <span className="flex items-center space-x-3">
+              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-[#003366] border border-white"></span><span>Verified</span></span>
+              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span><span>Needs Verification</span></span>
+            </span>
+          </div>
+
         </div>
 
-        {/* Right Column: Room Inspector & Override Controls */}
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs space-y-4">
-            <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider pb-2 border-b border-gray-100">
-              Facility Room Inspector
-            </h3>
+        {/* Right Col: Selected Room Details & Editor */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+              <h3 className="font-bold text-gray-900 text-sm">Marker Properties</h3>
+              {selectedMarker && (
+                <button
+                  onClick={() => {
+                    setEditingMarker(selectedMarker);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="px-2.5 py-1 text-xs font-bold text-[#003366] bg-blue-50 rounded hover:bg-blue-100 flex items-center space-x-1"
+                >
+                  <Edit2 size={12} />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
 
-            {activeLocation ? (
-              <div className="space-y-3 text-xs">
+            {selectedMarker ? (
+              <div className="space-y-3.5 text-xs text-gray-700">
                 <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-mono">{activeLocation.code}</span>
-                  <h4 className="text-sm font-bold text-gray-900">{activeLocation.name}</h4>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{activeLocation.description}</p>
+                  <label className="text-[10px] font-bold uppercase text-gray-400">Room Name</label>
+                  <div className="font-bold text-gray-900 text-sm">{selectedMarker.name}</div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-[10px] text-gray-400">Department</span>
-                    <p className="font-bold text-gray-800">{activeLocation.department}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400">Room Code</label>
+                    <div className="font-mono font-bold text-[#003366]">{selectedMarker.roomNumber || 'N/A'}</div>
                   </div>
-                  <div className="p-2 bg-gray-50 rounded-lg">
-                    <span className="text-[10px] text-gray-400">Seating Capacity</span>
-                    <p className="font-bold text-gray-800">{activeLocation.capacity} Seats</p>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400">Floor</label>
+                    <div>Floor {selectedMarker.floor === 0 ? 'Ground' : selectedMarker.floor}</div>
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <div className="flex justify-between items-center text-gray-600">
-                    <span>Floor Level:</span>
-                    <strong className="text-gray-900">Floor {activeLocation.floorNumber}</strong>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400">Category</label>
+                    <div>{selectedMarker.category}</div>
                   </div>
-                  <div className="flex justify-between items-center text-gray-600">
-                    <span>Wheelchair Accessibility:</span>
-                    <span className={`font-bold ${activeLocation.isAccessible ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      {activeLocation.isAccessible ? 'Accessible (Ramp/Lift)' : 'Stairs Only'}
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400">Department</label>
+                    <div className="truncate">{selectedMarker.department || 'General'}</div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-lg space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span>Coordinates</span>
+                    <span className="font-mono text-gray-500">X: {selectedMarker.xPercent}% • Y: {selectedMarker.yPercent}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Wheelchair Accessible</span>
+                    <span className={selectedMarker.isAccessible ? 'text-emerald-700 font-bold' : 'text-gray-500'}>
+                      {selectedMarker.isAccessible ? 'Yes (Elevator Route)' : 'No (Stairs Only)'}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-gray-600">
-                    <span>Current Status:</span>
-                    <span className="font-bold uppercase text-blue-900">{activeLocation.status}</span>
+                  <div className="flex items-center justify-between">
+                    <span>Architectural Status</span>
+                    <button
+                      onClick={() => toggleVerification(selectedMarker)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedMarker.isVerified 
+                          ? 'bg-emerald-100 text-emerald-800' 
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedMarker.isVerified ? '✓ Verified by Admin' : '⚠️ Mark as Verified'}
+                    </button>
                   </div>
                 </div>
 
-                {/* Status Override Buttons */}
-                <div className="pt-2 border-t border-gray-100">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1.5">
-                    Administrative Override
-                  </span>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      onClick={() => {
-                        campusStore.updateLocation(activeLocation.id, { status: 'available' });
-                        setLocations(campusStore.getLocations());
-                        setActiveLocation(prev => prev ? { ...prev, status: 'available' } : null);
-                      }}
-                      className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded font-bold text-[11px]"
-                    >
-                      Available
-                    </button>
-                    <button
-                      onClick={() => {
-                        campusStore.updateLocation(activeLocation.id, { status: 'occupied' });
-                        setLocations(campusStore.getLocations());
-                        setActiveLocation(prev => prev ? { ...prev, status: 'occupied' } : null);
-                      }}
-                      className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded font-bold text-[11px]"
-                    >
-                      In Session
-                    </button>
-                    <button
-                      onClick={() => {
-                        campusStore.updateLocation(activeLocation.id, { status: 'maintenance' });
-                        setLocations(campusStore.getLocations());
-                        setActiveLocation(prev => prev ? { ...prev, status: 'maintenance' } : null);
-                      }}
-                      className="px-2 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 rounded font-bold text-[11px]"
-                    >
-                      Maintenance
-                    </button>
+                {selectedMarker.notes && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-gray-400">Field Notes</label>
+                    <p className="text-gray-600 bg-amber-50/50 p-2 rounded border border-amber-200/50">{selectedMarker.notes}</p>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
-              <div className="py-12 text-center text-gray-400 text-xs">
-                <MapPin size={24} className="mx-auto text-gray-300 mb-2" />
-                <span>Select a room from the grid to inspect equipment, view issues, or override availability.</span>
+              <div className="py-12 text-center text-gray-400">
+                <MapPin size={32} className="mx-auto mb-2 opacity-30" />
+                <p>Select a marker pin from the blueprint to inspect and modify its attributes.</p>
               </div>
             )}
           </div>
 
-          {/* Building Accessibility Matrix */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs space-y-3 text-xs">
-            <h4 className="font-bold text-gray-900 flex items-center gap-1.5">
-              <Accessibility size={15} className="text-[#003366]" />
-              <span>Campus Accessibility Audit</span>
-            </h4>
-            <p className="text-[11px] text-gray-500">
-              Sathaye College autonomous accessibility guidelines require ramp and elevator parity across all lecture blocks.
-            </p>
-            <div className="space-y-1.5 pt-1">
-              <div className="flex justify-between text-gray-600">
-                <span>Elevator Service:</span>
-                <strong className={selectedBuilding.hasElevator ? 'text-emerald-700' : 'text-gray-400'}>
-                  {selectedBuilding.hasElevator ? 'Operational' : 'None'}
-                </strong>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Entrance Ramp:</span>
-                <strong className={selectedBuilding.hasRamp ? 'text-emerald-700' : 'text-gray-400'}>
-                  {selectedBuilding.hasRamp ? 'Wheelchair Ready' : 'None'}
-                </strong>
-              </div>
+          {selectedMarker && (
+            <div className="pt-4 border-t border-gray-100 flex items-center space-x-2">
+              <button
+                onClick={() => handleDeleteMarker(selectedMarker.id)}
+                className="w-full py-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg flex items-center justify-center space-x-1.5 transition-colors"
+              >
+                <Trash2 size={13} />
+                <span>Delete Marker</span>
+              </button>
             </div>
-          </div>
+          )}
         </div>
 
       </div>
 
-      {/* Add Facility Room Modal */}
-      {showAddRoomModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-gray-200 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
-              <h3 className="text-sm font-bold text-gray-900">Register New Campus Facility</h3>
-              <button onClick={() => setShowAddRoomModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={16} />
+      {/* Edit Marker Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+              <h3 className="font-bold text-gray-900 text-base">
+                {editingMarker.id ? 'Edit Campus Marker' : 'New Marker Anchor'}
+              </h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateRoom} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveMarker} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Room / Lab Name</label>
+                <label className="block font-semibold text-gray-700 mb-1">Room or Facility Name</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Room 305 - Data Science Lab"
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none"
+                  value={editingMarker.name || ''}
+                  onChange={(e) => setEditingMarker(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Smart Classroom 204"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-[#003366]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Room Code</label>
+                  <label className="block font-semibold text-gray-700 mb-1">Room Number / Code</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. R-305"
-                    value={newRoomCode}
-                    onChange={(e) => setNewRoomCode(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none uppercase font-mono"
+                    value={editingMarker.roomNumber || ''}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, roomNumber: e.target.value }))}
+                    placeholder="e.g. 204"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
                   />
                 </div>
-                <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Room Type</label>
-                  <select
-                    value={newRoomType}
-                    onChange={(e) => setNewRoomType(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none"
-                  >
-                    <option value="classroom">Classroom</option>
-                    <option value="lab">Laboratory</option>
-                    <option value="auditorium">Auditorium / Hall</option>
-                    <option value="library">Library / Reading</option>
-                    <option value="office">Department Office</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-gray-700 mb-1">Floor Level</label>
                   <select
-                    value={newRoomFloor}
-                    onChange={(e) => setNewRoomFloor(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none"
+                    value={editingMarker.floor ?? 0}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, floor: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
                   >
-                    {selectedBuilding.floors.map(f => (
-                      <option key={f} value={f}>Floor {f}</option>
-                    ))}
+                    <option value={0}>Ground Floor</option>
+                    <option value={1}>1st Floor</option>
+                    <option value={2}>2nd Floor</option>
+                    <option value={3}>3rd Floor</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Category</label>
+                  <select
+                    value={editingMarker.category || 'ACADEMIC'}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, category: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
+                  >
+                    <option value="ACADEMIC">Academic Classroom</option>
+                    <option value="LAB">Laboratory</option>
+                    <option value="LIBRARY">Library / Reading Hall</option>
+                    <option value="CANTEEN">Canteen / Cafeteria</option>
+                    <option value="ADMIN">Administrative Office</option>
+                    <option value="FACILITY">Auditorium / Facility</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Seating Capacity</label>
+                  <label className="block font-semibold text-gray-700 mb-1">Department</label>
                   <input
-                    type="number"
-                    min="1"
-                    value={newRoomCapacity}
-                    onChange={(e) => setNewRoomCapacity(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none"
+                    type="text"
+                    value={editingMarker.department || ''}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, department: e.target.value }))}
+                    placeholder="e.g. Information Technology"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-gray-700 mb-1">Department</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Information Technology"
-                  value={newRoomDepartment}
-                  onChange={(e) => setNewRoomDepartment(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:bg-white focus:outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Normalized X Coordinate (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={editingMarker.xPercent ?? 50}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, xPercent: parseFloat(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Normalized Y Coordinate (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={editingMarker.yPercent ?? 50}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, yPercent: parseFloat(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono"
+                  />
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="accCheck"
-                  checked={newRoomAccessible}
-                  onChange={(e) => setNewRoomAccessible(e.target.checked)}
-                  className="rounded text-[#003366]"
-                />
-                <label htmlFor="accCheck" className="text-gray-700 font-semibold cursor-pointer">
-                  Wheelchair Accessible (Elevator / Ramp available)
+              <div className="flex items-center space-x-6 pt-1">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingMarker.isAccessible ?? true}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, isAccessible: e.target.checked }))}
+                    className="rounded text-[#003366]"
+                  />
+                  <span className="font-semibold text-gray-700">Wheelchair Accessible</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingMarker.isVerified ?? true}
+                    onChange={(e) => setEditingMarker(prev => ({ ...prev, isVerified: e.target.checked }))}
+                    className="rounded text-[#003366]"
+                  />
+                  <span className="font-semibold text-gray-700">Architecturally Verified</span>
                 </label>
               </div>
 
-              <div className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Notes / Accessibility Details</label>
+                <textarea
+                  rows={2}
+                  value={editingMarker.notes || ''}
+                  onChange={(e) => setEditingMarker(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. Elevator access via West corridor, interactive smart board equipped"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => setShowAddRoomModal(false)}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-bold"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#003366] hover:bg-blue-900 text-white rounded-lg font-bold"
+                  className="px-5 py-2 text-xs font-bold bg-[#003366] text-white rounded-lg hover:bg-[#002244] shadow"
                 >
-                  Save Facility Room
+                  Save Marker
                 </button>
               </div>
             </form>

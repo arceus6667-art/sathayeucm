@@ -123,7 +123,7 @@ export function CampusSafety() {
                 className="w-full mt-4 bg-gray-100 hover:bg-gray-200 text-[#003366] font-bold text-xs py-2.5 rounded-xl transition-colors flex items-center justify-center space-x-1.5"
               >
                 <MapPin size={15} />
-                <span>Show Medical Post on 3D Map</span>
+                <span>Show Medical Post on Campus Map</span>
               </button>
             </div>
           </div>

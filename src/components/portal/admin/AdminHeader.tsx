@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Bell, Shield, ShieldAlert, AlertTriangle, 
-  Calendar, Clock, UserCheck, Radio, X
+  Calendar, Clock, UserCheck, Radio, X, Download
 } from 'lucide-react';
 import { campusStore, CampusNotification } from '../../../services/campusStore';
 
@@ -98,6 +98,17 @@ export default function AdminHeader({
           }`} />
           <span className="uppercase text-[11px] tracking-wide">{statusInfo.status}</span>
         </div>
+
+        {/* Export ZIP Codebase Button */}
+        <a
+          href="/api/export/zip"
+          download="sathaye-ucm-complete.zip"
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-amber-300 rounded-lg text-xs font-bold transition-colors shadow-xs"
+          title="Download Complete Production ZIP Archive"
+        >
+          <Download size={14} />
+          <span className="hidden sm:inline">Export ZIP</span>
+        </a>
 
         {/* Rapid SOS Dispatch Button */}
         <button

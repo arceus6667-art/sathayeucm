@@ -591,15 +591,102 @@ export class SmartCampusStore {
   }
 
   // --- ACCESSIBILITY ---
-  static getAccessibilityPrefs(): { highContrast: boolean; largeText: boolean; ttsEnabled: boolean } {
+  static getAccessibilityPrefs(): {
+    highContrast: boolean;
+    largeText: boolean;
+    fontSizeLevel: number; // -1: A-, 0: A (default), 1: A+, 2: A++
+    ttsEnabled: boolean;
+    grayscale: boolean;
+    invertColors: boolean;
+    dyslexicFont: boolean;
+    highlightLinks: boolean;
+    readingGuide: boolean;
+    language: 'en' | 'hi' | 'mr';
+  } {
     return loadItem(KEYS.ACCESSIBILITY, {
       highContrast: false,
       largeText: false,
-      ttsEnabled: false
+      fontSizeLevel: 0,
+      ttsEnabled: false,
+      grayscale: false,
+      invertColors: false,
+      dyslexicFont: false,
+      highlightLinks: false,
+      readingGuide: false,
+      language: 'en' as const
     });
   }
 
-  static setAccessibilityPrefs(prefs: { highContrast: boolean; largeText: boolean; ttsEnabled: boolean }) {
-    saveItem(KEYS.ACCESSIBILITY, prefs);
+  static setAccessibilityPrefs(prefs: Partial<{
+    highContrast: boolean;
+    largeText: boolean;
+    fontSizeLevel: number;
+    ttsEnabled: boolean;
+    grayscale: boolean;
+    invertColors: boolean;
+    dyslexicFont: boolean;
+    highlightLinks: boolean;
+    readingGuide: boolean;
+    language: 'en' | 'hi' | 'mr';
+  }>) {
+    const current = this.getAccessibilityPrefs();
+    const updated = { ...current, ...prefs };
+    saveItem(KEYS.ACCESSIBILITY, updated);
+
+    // Apply DOM root classes immediately
+    const root = document.documentElement;
+    
+    // High contrast
+    if (updated.highContrast) root.classList.add('high-contrast-mode');
+    else root.classList.remove('high-contrast-mode');
+
+    // Grayscale
+    if (updated.grayscale) root.classList.add('grayscale-mode');
+    else root.classList.remove('grayscale-mode');
+
+    // Invert colors
+    if (updated.invertColors) root.classList.add('invert-mode');
+    else root.classList.remove('invert-mode');
+
+    // Dyslexic font
+    if (updated.dyslexicFont) root.classList.add('dyslexic-mode');
+    else root.classList.remove('dyslexic-mode');
+
+    // Highlight links
+    if (updated.highlightLinks) root.classList.add('highlight-links');
+    else root.classList.remove('highlight-links');
+
+    // Font size scaling
+    root.classList.remove('font-scale-sm', 'font-scale-md', 'font-scale-lg', 'font-scale-xl');
+    if (updated.fontSizeLevel === -1) root.classList.add('font-scale-sm');
+    else if (updated.fontSizeLevel === 1) root.classList.add('font-scale-lg');
+    else if (updated.fontSizeLevel === 2) root.classList.add('font-scale-xl');
+    else root.classList.add('font-scale-md');
+
+    window.dispatchEvent(new CustomEvent('sathaye_accessibility_updated', { detail: updated }));
+  }
+
+  static setFontSizeLevel(level: number) {
+    const clamped = Math.max(-1, Math.min(2, level));
+    this.setAccessibilityPrefs({ fontSizeLevel: clamped, largeText: clamped > 0 });
+  }
+
+  static setLanguage(language: 'en' | 'hi' | 'mr') {
+    this.setAccessibilityPrefs({ language });
+  }
+
+  static resetAccessibility() {
+    this.setAccessibilityPrefs({
+      highContrast: false,
+      largeText: false,
+      fontSizeLevel: 0,
+      ttsEnabled: false,
+      grayscale: false,
+      invertColors: false,
+      dyslexicFont: false,
+      highlightLinks: false,
+      readingGuide: false,
+      language: 'en'
+    });
   }
 }

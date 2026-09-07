@@ -83,7 +83,7 @@ export default function Safety() {
               to="/map?target=loc-washroom-accessible"
               className="inline-flex items-center text-xs font-bold text-[#003366] hover:underline"
             >
-              <span>View On 3D Map</span>
+              <span>View On Campus Map</span>
               <ChevronRight size={14} />
             </Link>
           </div>

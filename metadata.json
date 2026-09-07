@@ -1,6 +1,6 @@
 {
   "name": "Smart Sathaye Campus",
-  "description": "Unified Smart Campus platform for Sathaye College, Mumbai featuring AI Campus Copilot, Interactive 3D Map, Student & Faculty Portals, Smart Canteen, and Digital Library.",
+  "description": "Unified Smart Campus platform for Sathaye College, Mumbai featuring AI Campus Copilot, 2D Blueprint Campus Map, Student & Faculty Portals, Timetable Engine, Smart Canteen, and Digital Library.",
   "requestFramePermissions": [
     "geolocation",
     "microphone"

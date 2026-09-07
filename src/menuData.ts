@@ -9,7 +9,7 @@ export type MenuItem = {
 export const siteMenu: MenuItem[] = [
   { id: "1", type: "Home", path: "/" },
   { id: "smart-campus", type: "Smart Campus", children: [
-    { id: "sc-map", type: "3D Campus Map & Wayfinding", path: "/map" },
+    { id: "sc-map", type: "Campus 2D Map & Floor Plans", path: "/map" },
     { id: "sc-canteen", type: "Smart Canteen & Meal Tokens", path: "/canteen" },
     { id: "sc-library", type: "Smart Library & Reading Seats", path: "/library" },
     { id: "sc-events", type: "Campus Events & Passes", path: "/events" },

@@ -241,7 +241,7 @@ export interface CampusLocation {
   floor: number;
   floorLabel: string;
   roomNumber?: string;
-  x: number; // 0-100 normalized canvas coordinates for 3D/isometric rendering
+  x: number; // 0-100 normalized canvas coordinates for 2D floor plan rendering
   y: number;
   z: number;
   capacity?: number;

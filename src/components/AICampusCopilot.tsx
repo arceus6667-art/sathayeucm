@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Mic, MicOff, X, Sparkles, Navigation, MapPin, Coffee, BookOpen, Clock, AlertTriangle, Volume2 } from 'lucide-react';
+import { Bot, Send, Mic, MicOff, X, Sparkles, Navigation, MapPin, Coffee, BookOpen, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SmartCampusStore } from '../smartCampusStore';
-import { CAMPUS_LOCATIONS, STUDENT_TIMETABLE } from '../smartCampusData';
+import { campusStore } from '../services/campusStore';
 
 interface Message {
   id: string;
@@ -20,18 +20,19 @@ export function AICampusCopilot() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'm-init',
       sender: 'bot',
-      text: 'Namaskar! I am your Sathaye AI Campus Copilot. How can I help you today? Ask me about classrooms, your next lecture, canteen orders, events, or navigation.',
+      text: 'Namaskar! I am your Sathaye AI Campus Copilot. How can I assist you today? Ask me about classrooms, today\'s timetable, canteen meal tokens, library books, or 2D floor plans.',
       timestamp: 'Just now'
     }
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const currentUser = SmartCampusStore.getCurrentUser();
+  const currentUser = campusStore.getCurrentUser();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -41,15 +42,13 @@ export function AICampusCopilot() {
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isOpen]);
+  }, [messages, isOpen, isTyping]);
 
   // Voice recognition support
   const toggleVoice = () => {
-    // Check if webkitSpeechRecognition or SpeechRecognition is available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      // Fallback voice simulation
-      setInput('Where is my next class?');
+      setInput('Where is Room 204?');
       return;
     }
 
@@ -76,7 +75,7 @@ export function AICampusCopilot() {
     }
   };
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query) return;
 
@@ -89,122 +88,109 @@ export function AICampusCopilot() {
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setIsTyping(true);
 
-    // Process intelligence response
-    setTimeout(() => {
-      const lower = query.toLowerCase();
-      let replyText = '';
-      let action: Message['action'] = undefined;
+    // Safeguard: Check if student asks for unauthorized actions (private staff contact, arbitrary room unlock)
+    const lower = query.toLowerCase();
+    if (lower.includes('unlock room') || lower.includes('open door') || lower.includes('private number') || lower.includes('phone number of teacher') || lower.includes('change grade') || lower.includes('change attendance')) {
+      setTimeout(() => {
+        setIsTyping(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: 'bot-' + Date.now(),
+            sender: 'bot',
+            text: 'I am not authorized to perform administrative overrides, share private staff contact numbers, or unlock campus facilities directly. Please visit the Central Administration Office (Room 002, Ground Floor) or submit a formal ticket via the Support & Helpdesk portal.',
+            action: {
+              type: 'link',
+              label: 'Open Campus Support Desk',
+              target: '/support'
+            },
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      }, 500);
+      return;
+    }
 
-      // 1. Next class / Schedule
-      if (lower.includes('next class') || lower.includes('lecture') || lower.includes('timetable') || lower.includes('where to go')) {
-        const nextLec = STUDENT_TIMETABLE[0];
-        replyText = `Your next lecture is "${nextLec.subject}" (${nextLec.code}) scheduled at ${nextLec.startTime} in ${nextLec.room} (${nextLec.building}, ${nextLec.floor}). Faculty: ${nextLec.facultyName}.`;
-        action = {
-          type: 'navigate',
-          label: `Navigate to ${nextLec.room} (3 mins walk)`,
-          target: `/map?target=${nextLec.locationId}`
-        };
-      }
-      // 2. Room 204
-      else if (lower.includes('204') || lower.includes('room 204')) {
-        replyText = `Lecture Room 204 is situated on the 2nd Floor of the Main Academic Building. It is equipped with smart projectors and has wheelchair elevator access from the central atrium.`;
-        action = {
-          type: 'navigate',
-          label: 'Show 3D Route to Room 204',
-          target: '/map?target=loc-room-204'
-        };
-      }
-      // 3. IT Lab / Computers
-      else if (lower.includes('it lab') || lower.includes('lab 1') || lower.includes('computer')) {
-        replyText = `IT Laboratory 1 (Advanced Computing) is on the 3rd Floor of the IT & Self-Finance Wing. It has 45 high-end Linux/Docker workstations.`;
-        action = {
-          type: 'navigate',
-          label: 'Navigate to IT Lab 1',
-          target: '/map?target=loc-it-lab-1'
-        };
-      }
-      // 4. Library
-      else if (lower.includes('library') || lower.includes('book') || lower.includes('reading hall')) {
-        replyText = `Sathaye Central Library & Reading Hall is on the 1st Floor of the Knowledge Resource Center. Current reading hall status: 14 seats available on Floor 1.`;
-        action = {
-          type: 'link',
-          label: 'Open Smart Library Desk',
-          target: '/library'
-        };
-      }
-      // 5. Canteen
-      else if (lower.includes('canteen') || lower.includes('food') || lower.includes('eat') || lower.includes('chai') || lower.includes('misal')) {
-        replyText = `The Student Canteen is open on the Ground Floor pavilion. Today's top favorites: Mumbai Special Misal Pav (₹50) and Masala Chai (₹15). Current queue: approx 6-8 minutes.`;
-        action = {
-          type: 'link',
-          label: 'Order Online & Skip the Queue',
-          target: '/canteen'
-        };
-      }
-      // 6. Events / Saptarang
-      else if (lower.includes('event') || lower.includes('fest') || lower.includes('saptarang') || lower.includes('hackathon')) {
-        replyText = `Upcoming highlights: Saptarang 2026 Annual Fest (Oct 15), Sathaye TechSprint 24hr Hackathon (Sept 26), and Inter-Department Cricket Championship. Registrations are open!`;
-        action = {
-          type: 'link',
-          label: 'View Campus Events',
-          target: '/events'
-        };
-      }
-      // 7. Medical / Emergency / SOS
-      else if (lower.includes('medical') || lower.includes('doctor') || lower.includes('emergency') || lower.includes('sos') || lower.includes('accident') || lower.includes('sick')) {
-        replyText = `Campus Health & Medical Center is located on the Ground Floor of Main Academic Building (Room G-04). For immediate assistance, call Security Desk (+91 93213 47772 / Ext 101) or trigger the SOS button.`;
-        action = {
-          type: 'link',
-          label: 'Campus Safety & Emergency Desk',
-          target: '/safety'
-        };
-      }
-      // 8. Auditorium
-      else if (lower.includes('auditorium') || lower.includes('dhuru')) {
-        replyText = `Kashinath Dhuru Auditorium is situated in the Auditorium Complex on the ground level, accommodating 650 seats.`;
-        action = {
-          type: 'navigate',
-          label: 'Navigate to Auditorium',
-          target: '/map?target=loc-auditorium'
-        };
-      }
-      // 9. Lost item / Support
-      else if (lower.includes('lost') || lower.includes('found') || lower.includes('repair') || lower.includes('broken')) {
-        replyText = `You can report lost property or lodge infrastructure maintenance requests (AC, Wi-Fi, projector) on the Campus Support desk. Our AI will automatically find matching found items!`;
-        action = {
-          type: 'link',
-          label: 'Campus Support & Lost & Found',
-          target: '/support'
-        };
-      }
-      // 10. Default informative fallback
-      else {
-        replyText = `I understand your request regarding "${query}". At Sathaye College, all academic schedules, faculty contacts, canteen queues, reading hall seats, and 3D campus routing are accessible via the portal.`;
-        action = {
-          type: 'link',
-          label: 'Explore Student Portal',
-          target: '/portal'
-        };
-      }
+    // Call server API for grounded answers & Gemini AI
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          userRole: currentUser?.role || 'STUDENT',
+          userEmail: currentUser?.email || 'student@sathaye.edu'
+        })
+      });
 
-      const botMsg: Message = {
+      if (response.ok) {
+        const data = await response.json();
+        setIsTyping(false);
+        setMessages(prev => [
+          ...prev,
+          {
+            id: 'bot-' + Date.now(),
+            sender: 'bot',
+            text: data.reply || 'Here is the relevant information from Sathaye Campus records.',
+            action: data.action,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        return;
+      }
+    } catch (e) {
+      console.warn('[Copilot Server Fallback]:', e);
+    }
+
+    // Fallback grounded answer
+    setIsTyping(false);
+    let replyText = '';
+    let action: Message['action'] = undefined;
+
+    if (lower.includes('next class') || lower.includes('lecture') || lower.includes('timetable')) {
+      replyText = 'Your upcoming class is "Python Practical Lab" in Room 201 (Floor 2) with Prof. Rohan Desai.';
+      action = {
+        type: 'navigate',
+        label: 'View Room 201 on 2D Map',
+        target: '/map?target=room-201'
+      };
+    } else if (lower.includes('204') || lower.includes('room 204')) {
+      replyText = 'Lecture Room 204 is situated on the 2nd Floor of the Main Academic Block. It has smart interactive boards and wheelchair elevator access.';
+      action = {
+        type: 'navigate',
+        label: 'Locate Room 204 on Map',
+        target: '/map?target=m-204'
+      };
+    } else if (lower.includes('canteen') || lower.includes('food')) {
+      replyText = 'The Student Canteen is located in the Ground Floor Cafeteria Pavilion. You can browse the daily menu and pre-order meal tokens online.';
+      action = {
+        type: 'link',
+        label: 'Open Smart Canteen',
+        target: '/canteen'
+      };
+    } else if (lower.includes('library') || lower.includes('book')) {
+      replyText = 'The Central Library & Knowledge Resource Center is on the 1st Floor. Reading seats and textbook borrowing are open.';
+      action = {
+        type: 'link',
+        label: 'Open Smart Library',
+        target: '/library'
+      };
+    } else {
+      replyText = 'I am your Sathaye AI Copilot. You can ask me to find any classroom (e.g. Room 204), check your timetable, verify canteen meal tokens, or navigate between floors on our 2D floor plans.';
+    }
+
+    setMessages(prev => [
+      ...prev,
+      {
         id: 'bot-' + Date.now(),
         sender: 'bot',
         text: replyText,
         action,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-
-      setMessages(prev => [...prev, botMsg]);
-
-      // Readout if TTS is enabled
-      const prefs = SmartCampusStore.getAccessibilityPrefs();
-      if (prefs.ttsEnabled && 'speechSynthesis' in window) {
-        const utter = new SpeechSynthesisUtterance(replyText);
-        window.speechSynthesis.speak(utter);
       }
-    }, 450);
+    ]);
   };
 
   const handleActionClick = (action: Message['action']) => {
@@ -213,147 +199,174 @@ export function AICampusCopilot() {
     setIsOpen(false);
   };
 
-  const quickPrompts = [
-    'Where is my next class?',
-    'Route to Room 204',
-    'What is on the Canteen menu?',
-    'Library seat availability',
-    'Emergency & Medical Room'
-  ];
+  const clearChat = () => {
+    setMessages([
+      {
+        id: 'm-init',
+        sender: 'bot',
+        text: 'Conversation cleared. How may I assist you with Sathaye College services?',
+        timestamp: 'Just now'
+      }
+    ]);
+  };
 
   return (
-    <>
-      {/* Floating Launcher Button */}
-      <div className="fixed bottom-6 right-6 z-40">
-        {!isOpen && (
-          <button
-            onClick={() => setIsOpen(true)}
-            className="group relative bg-[#003366] text-yellow-400 hover:bg-[#002244] border-2 border-yellow-500/80 p-3.5 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95"
-            title="Sathaye AI Campus Copilot"
-          >
-            <Bot size={28} className="text-yellow-400 group-hover:rotate-12 transition-transform duration-300" />
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-yellow-500"></span>
-            </span>
-          </button>
-        )}
-      </div>
+    <div className="fixed bottom-6 right-6 z-50">
+      
+      {/* Floating Toggle Button */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-[#003366] hover:bg-[#002244] text-white p-3.5 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-amber-400 group transition-all transform hover:scale-105"
+          aria-label="Open AI Campus Copilot"
+        >
+          <div className="relative">
+            <Bot size={24} className="text-amber-300" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#003366] animate-pulse"></span>
+          </div>
+          <span className="font-bold text-xs uppercase tracking-wider pr-1 hidden sm:inline">
+            Campus AI Copilot
+          </span>
+        </button>
+      )}
 
-      {/* Copilot Drawer / Modal */}
+      {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-h-[85vh] h-[600px] bg-white rounded-2xl shadow-2xl border border-gray-300 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-6">
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-[90vw] sm:w-[380px] h-[520px] max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+          
           {/* Header */}
-          <div className="bg-[#003366] text-white p-4 flex items-center justify-between border-b border-yellow-500/50">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-full bg-yellow-500 text-[#003366] flex items-center justify-center font-bold shadow">
-                <Bot size={22} />
+          <div className="bg-[#003366] text-white p-3.5 flex items-center justify-between border-b-2 border-amber-400">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center border border-amber-400/40">
+                <Bot size={18} className="text-amber-300" />
               </div>
               <div>
-                <div className="flex items-center space-x-1.5">
-                  <h3 className="font-bold text-base leading-tight">AI Campus Copilot</h3>
-                  <span className="bg-yellow-400/20 text-yellow-300 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                    Sathaye
+                <div className="text-xs font-black uppercase tracking-wider flex items-center space-x-1.5">
+                  <span>Sathaye Campus Copilot</span>
+                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[9px] px-1.5 py-0.2 rounded font-mono">
+                    Grounded AI
                   </span>
                 </div>
-                <p className="text-[11px] text-blue-200">Interactive Assistant • Connected to Campus Hub</p>
+                <div className="text-[10px] text-blue-200">
+                  {currentUser ? `${currentUser.role} Mode • ${currentUser.name}` : 'Student & Visitor Guide'}
+                </div>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-gray-300 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X size={20} />
-            </button>
+
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={clearChat}
+                className="text-blue-200 hover:text-white p-1 text-[11px] rounded transition-colors"
+                title="Clear Chat History"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-300 hover:text-white p-1 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/70">
-            {messages.map(msg => (
+          {/* Messages Container */}
+          <div className="flex-1 p-3.5 overflow-y-auto space-y-3 bg-slate-50/50">
+            {messages.map((m) => (
               <div
-                key={msg.id}
-                className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+                key={m.id}
+                className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                    msg.sender === 'user'
-                      ? 'bg-[#003366] text-white rounded-br-none'
-                      : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
+                  className={`max-w-[85%] rounded-xl p-3 text-xs leading-relaxed ${
+                    m.sender === 'user'
+                      ? 'bg-[#003366] text-white rounded-br-none shadow-sm'
+                      : 'bg-white text-gray-800 border border-gray-200/80 rounded-bl-none shadow-xs'
                   }`}
                 >
-                  <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  {m.text}
 
-                  {/* Action button if present */}
-                  {msg.action && (
-                    <button
-                      onClick={() => handleActionClick(msg.action)}
-                      className="mt-3 w-full flex items-center justify-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-[#003366] font-bold text-xs py-2 px-3 rounded-lg shadow transition-colors"
-                    >
-                      {msg.action.type === 'navigate' ? <Navigation size={14} /> : <MapPin size={14} />}
-                      <span>{msg.action.label}</span>
-                    </button>
+                  {/* Interactive Action Button */}
+                  {m.action && (
+                    <div className="mt-2.5 pt-2 border-t border-gray-100">
+                      <button
+                        onClick={() => handleActionClick(m.action)}
+                        className="w-full py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 text-[#003366] font-bold text-[11px] rounded-lg transition-colors flex items-center justify-center space-x-1 border border-blue-200"
+                      >
+                        <Navigation size={12} />
+                        <span>{m.action.label}</span>
+                      </button>
+                    </div>
                   )}
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 px-1">{msg.timestamp}</span>
+                <span className="text-[9px] text-gray-400 mt-1 px-1">{m.timestamp}</span>
               </div>
             ))}
+
+            {isTyping && (
+              <div className="flex items-center space-x-1 text-gray-400 text-xs p-2 bg-white rounded-xl border border-gray-200 w-24">
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                <span className="text-[10px] ml-1">Thinking</span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Suggestions */}
-          <div className="px-3 py-2 bg-white border-t border-gray-100 flex items-center space-x-1.5 overflow-x-auto text-xs no-scrollbar">
-            {quickPrompts.map((q, i) => (
+          {/* Quick Query Chips */}
+          <div className="px-3 py-2 bg-white border-t border-gray-100 flex space-x-1.5 overflow-x-auto text-[10px]">
+            {[
+              'Where is Room 204?',
+              'Next lecture?',
+              'Canteen menu',
+              'Library seats',
+              'Principal Office'
+            ].map((chip) => (
               <button
-                key={i}
-                onClick={() => handleSend(q)}
-                className="whitespace-nowrap px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#003366] rounded-full border border-blue-200 text-[11px] font-medium transition-colors"
+                key={chip}
+                onClick={() => handleSend(chip)}
+                className="px-2.5 py-1 bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-[#003366] rounded-full whitespace-nowrap transition-colors border border-gray-200 font-medium"
               >
-                {q}
+                {chip}
               </button>
             ))}
           </div>
 
-          {/* Input Area */}
-          <div className="p-3 bg-white border-t border-gray-200">
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                handleSend();
-              }}
-              className="flex items-center space-x-2"
+          {/* Input Bar */}
+          <div className="p-2.5 bg-white border-t border-gray-200 flex items-center space-x-1.5">
+            <button
+              onClick={toggleVoice}
+              className={`p-2 rounded-xl transition-colors ${
+                isListening ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+              }`}
+              title="Speak voice query"
             >
-              <button
-                type="button"
-                onClick={toggleVoice}
-                className={`p-2 rounded-xl border transition-colors ${
-                  isListening
-                    ? 'bg-red-500 text-white animate-pulse border-red-600'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-300'
-                }`}
-                title="Voice Input (Speech recognition)"
-              >
-                {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-              </button>
-              <input
-                type="text"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                placeholder="Ask about rooms, classes, food, library..."
-                className="flex-1 bg-gray-50 border border-gray-300 rounded-xl px-3.5 py-2 text-sm text-gray-800 focus:outline-none focus:border-[#003366] focus:bg-white transition-all"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                className="bg-[#003366] hover:bg-blue-900 disabled:opacity-40 text-yellow-400 p-2 rounded-xl transition-all shadow"
-              >
-                <Send size={18} />
-              </button>
-            </form>
+              {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Ask about classes, rooms, fests..."
+              className="flex-1 px-3 py-1.5 text-xs bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003366]"
+            />
+
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim()}
+              className="bg-[#003366] hover:bg-[#002244] text-white p-2 rounded-xl disabled:opacity-40 transition-colors"
+            >
+              <Send size={15} />
+            </button>
           </div>
+
         </div>
       )}
-    </>
+
+    </div>
   );
 }
-
 export default AICampusCopilot;

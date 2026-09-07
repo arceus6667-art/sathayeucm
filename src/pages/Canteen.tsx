@@ -60,19 +60,48 @@ export default function Canteen() {
 
   const cartCount = (Object.values(cart) as number[]).reduce((sum: number, q: number) => sum + Number(q), 0);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cartCount === 0) return;
 
+    const user = campusStore.getCurrentUser();
     const orderItems = (Object.entries(cart) as [string, number][]).map(([itemId, qty]) => {
       const item = items.find(i => i.id === itemId)!;
       return {
         itemId,
-        name: item.name,
-        price: item.price,
+        name: item ? item.name : 'Canteen Item',
+        price: item ? item.price : 40,
         quantity: Number(qty)
       };
     });
 
+    try {
+      const res = await fetch('/api/canteen/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: orderItems,
+          userEmail: user?.email || 'student@sathaye.edu',
+          paymentMethod
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.order) {
+          const localOrder = campusStore.placeCanteenOrder(orderItems);
+          localOrder.token = data.order.tokenCode || localOrder.token;
+          localOrder.totalAmount = data.order.totalAmount;
+          setPlacedOrder(localOrder);
+          setCart({});
+          setIsCheckingOut(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[Canteen Server Fallback]:', e);
+    }
+
+    // Fallback store order
     const newOrder = campusStore.placeCanteenOrder(orderItems);
     setPlacedOrder(newOrder);
     setCart({});

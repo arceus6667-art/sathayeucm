@@ -333,7 +333,7 @@ export default function FacultyPortalView() {
                     to={`/map?target=${entry.roomId}`}
                     className="text-xs font-bold text-[#003366] hover:underline"
                   >
-                    View Room in 3D Map
+                    View Room in Campus Map
                   </Link>
                 </div>
               </div>

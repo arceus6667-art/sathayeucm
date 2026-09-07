@@ -3,18 +3,91 @@
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
+  transition: font-size 0.15s ease-in-out;
 }
 
+/* Font Resizing Hierarchy */
+html.font-scale-sm {
+  font-size: 87.5% !important; /* ~14px base */
+}
+
+html.font-scale-md {
+  font-size: 100% !important; /* 16px default */
+}
+
+html.font-scale-lg {
+  font-size: 115% !important; /* ~18.4px */
+}
+
+html.font-scale-xl {
+  font-size: 130% !important; /* ~20.8px */
+}
+
+/* High Contrast Mode (W3C Yellow-on-Black / High Luminance Ratio) */
 html.high-contrast-mode {
-  filter: contrast(125%);
+  filter: contrast(135%);
 }
 
 html.high-contrast-mode body {
-  background-color: #000 !important;
-  color: #fff !important;
+  background-color: #0b0f19 !important;
+  color: #ffff00 !important;
 }
 
-html.large-text-mode {
-  font-size: 112.5%; /* 18px base instead of 16px */
+html.high-contrast-mode header,
+html.high-contrast-mode nav,
+html.high-contrast-mode main,
+html.high-contrast-mode footer,
+html.high-contrast-mode .bg-white,
+html.high-contrast-mode .bg-gray-50,
+html.high-contrast-mode .bg-gray-100 {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border-color: #ffff00 !important;
 }
+
+html.high-contrast-mode a {
+  color: #00ffff !important;
+  text-decoration: underline !important;
+}
+
+/* Grayscale / Monochrome */
+html.grayscale-mode {
+  filter: grayscale(100%) !important;
+}
+
+/* Inverted Colors with Media Safeguard */
+html.invert-mode {
+  filter: invert(100%) hue-rotate(180deg) !important;
+}
+
+html.invert-mode img,
+html.invert-mode video,
+html.invert-mode iframe,
+html.invert-mode svg {
+  filter: invert(100%) hue-rotate(180deg) !important;
+}
+
+/* Dyslexia-Friendly Typography */
+html.dyslexic-mode,
+html.dyslexic-mode body,
+html.dyslexic-mode p,
+html.dyslexic-mode span,
+html.dyslexic-mode h1,
+html.dyslexic-mode h2,
+html.dyslexic-mode h3,
+html.dyslexic-mode a {
+  font-family: 'Comic Sans MS', 'Trebuchet MS', sans-serif !important;
+  letter-spacing: 0.04em !important;
+  word-spacing: 0.08em !important;
+  line-height: 1.8 !important;
+}
+
+/* Highlight Links */
+html.highlight-links a {
+  text-decoration: underline !important;
+  text-decoration-color: #eab308 !important;
+  text-decoration-thickness: 2px !important;
+  background-color: rgba(254, 240, 138, 0.25) !important;
+}
+
 

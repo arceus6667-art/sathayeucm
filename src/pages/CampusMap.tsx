@@ -1,491 +1,1128 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { 
-  MapPin, Navigation, Layers, Compass, Search, Filter, 
+  MapPin, Navigation, Layers, Search, Filter, 
   Accessibility, Building2, Coffee, BookOpen, Clock, 
-  ChevronRight, ArrowRight, ShieldCheck, CheckCircle2, Info, Eye
+  ChevronRight, ArrowRight, ShieldCheck, CheckCircle2, Info, 
+  ZoomIn, ZoomOut, RotateCcw, AlertTriangle, Compass, Check, 
+  Move, Wrench, Edit3, Save, X, Calendar, User, Wifi, Tv, Wind, FileText, CheckCircle
 } from 'lucide-react';
-import { CAMPUS_LOCATIONS, CampusLocation } from '../smartCampusData';
+import { 
+  CAMPUS_FLOORS, 
+  CampusMapFloor, 
+  CampusMapMarker, 
+  campusMapService, 
+  MAP_NODES,
+  MapGraphNode
+} from '../services/mapStore';
+import { campusStore } from '../services/campusStore';
+import { timetableService } from '../services/timetableStore';
 
 export function CampusMap() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  // Floor Selection: -1=All, 0=Ground, 1=1st, 2=2nd, 3=3rd
+  const [activeFloorId, setActiveFloorId] = useState<number>(-1);
+  const [markers, setMarkers] = useState<CampusMapMarker[]>(campusMapService.getMarkers());
+  const [selectedMarker, setSelectedMarker] = useState<CampusMapMarker | null>(null);
+  
+  // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeLocation, setActiveLocation] = useState<CampusLocation | null>(null);
-  const [isWheelchairMode, setIsWheelchairMode] = useState(false);
-  const [isNavigating, setIsNavigating] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [wheelchairOnly, setWheelchairOnly] = useState(false);
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
 
-  // Check URL query parameter ?target=loc-id
+  // Zoom & Pan state
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  // Routing Engine State
+  const [startNodeId, setStartNodeId] = useState<string>('n-gate');
+  const [targetNodeId, setTargetNodeId] = useState<string>('');
+  const [isRoutingActive, setIsRoutingActive] = useState(false);
+  const [routeResult, setRouteResult] = useState<{
+    path: MapGraphNode[];
+    totalDistance: number;
+    steps: Array<{ floor: number; instruction: string; distanceMeters: number }>;
+  } | null>(null);
+
+  // Admin Map Mode State
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [showAdminEditModal, setShowAdminEditModal] = useState(false);
+  const [editingRoomData, setEditingRoomData] = useState<Partial<CampusMapMarker>>({});
+  const [adminSaveSuccess, setAdminSaveSuccess] = useState(false);
+
+  // Subscribe to marker and timetable changes
   useEffect(() => {
-    const targetId = searchParams.get('target');
-    if (targetId) {
-      const found = CAMPUS_LOCATIONS.find(l => l.id === targetId);
-      if (found) {
-        setActiveLocation(found);
-        setSelectedFloor(found.floor);
-        setIsNavigating(true);
-      }
-    }
-  }, [searchParams]);
-
-  const filteredLocations = useMemo(() => {
-    return CAMPUS_LOCATIONS.filter(loc => {
-      const matchesFloor = selectedFloor === 'all' || loc.floor === selectedFloor;
-      const matchesCategory = selectedCategory === 'all' || loc.type === selectedCategory;
-      const matchesSearch = loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        loc.buildingName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (loc.roomNumber && loc.roomNumber.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesWheelchair = !isWheelchairMode || loc.isAccessible;
-      return matchesFloor && matchesCategory && matchesSearch && matchesWheelchair;
+    const unsubMap = campusMapService.subscribe(() => {
+      setMarkers(campusMapService.getMarkers());
     });
-  }, [selectedFloor, selectedCategory, searchQuery, isWheelchairMode]);
+    const unsubTimetable = timetableService.subscribe(() => {
+      // Re-trigger occupancy calculation
+      setMarkers([...campusMapService.getMarkers()]);
+    });
+    return () => {
+      unsubMap();
+      unsubTimetable();
+    };
+  }, []);
 
-  // Turn-by-turn route steps calculation
-  const routeSteps = useMemo(() => {
-    if (!activeLocation) return [];
-    
-    const steps = [
-      { text: 'Start from Campus Main Gate / Central Quadrangle', distance: '0 m', time: '0 min' },
-    ];
+  // Check URL query parameter ?target=marker-id or ?floor=X or ?admin=true
+  useEffect(() => {
+    const target = searchParams.get('target');
+    const floorParam = searchParams.get('floor');
+    const adminParam = searchParams.get('admin');
 
-    if (activeLocation.buildingId === 'bldg-main') {
-      steps.push({ text: 'Head straight through the marble colonnade toward Main Academic Block', distance: '40 m', time: '1 min' });
-      if (activeLocation.floor > 0) {
-        if (isWheelchairMode) {
-          steps.push({ text: 'Take the West Atrium Elevator to Floor ' + activeLocation.floor, distance: '25 m', time: '1 min' });
-        } else {
-          steps.push({ text: 'Ascend Central Stairwell to Floor ' + activeLocation.floor, distance: '30 m', time: '1.5 min' });
+    if (adminParam === 'true') {
+      setIsAdminMode(true);
+    }
+
+    if (floorParam !== null) {
+      const f = parseInt(floorParam, 10);
+      if (!isNaN(f)) setActiveFloorId(f);
+    }
+
+    if (target) {
+      const found = markers.find(m => m.id === target || m.roomNumber?.toLowerCase() === target.toLowerCase());
+      if (found) {
+        setSelectedMarker(found);
+        setActiveFloorId(found.floor);
+        // Find closest map node to target
+        const matchingNode = MAP_NODES.find(n => n.name.toLowerCase().includes(found.name.toLowerCase()) || n.id.includes(found.id));
+        if (matchingNode) {
+          setTargetNodeId(matchingNode.id);
         }
       }
-      steps.push({ text: `Arrive at ${activeLocation.name} (${activeLocation.roomNumber || ''})`, distance: '15 m', time: '0.5 min' });
-    } else if (activeLocation.buildingId === 'bldg-it') {
-      steps.push({ text: 'Walk east past the Botanical Garden to the IT & Self-Finance Wing', distance: '70 m', time: '1.5 min' });
-      if (activeLocation.floor > 0) {
-        steps.push({ text: isWheelchairMode ? 'Take South Elevator to ' + activeLocation.floorLabel : 'Take IT Wing Staircase to ' + activeLocation.floorLabel, distance: '35 m', time: '1.5 min' });
-      }
-      steps.push({ text: `Reach ${activeLocation.name}`, distance: '20 m', time: '0.5 min' });
-    } else if (activeLocation.buildingId === 'bldg-lib') {
-      steps.push({ text: 'Take the shaded tree-lined pathway to Knowledge Resource Center', distance: '60 m', time: '1 min' });
-      steps.push({ text: 'Use the step-free entrance ramp to Central Library', distance: '20 m', time: '0.5 min' });
-    } else if (activeLocation.buildingId === 'bldg-canteen') {
-      steps.push({ text: 'Head past the Sports Ground toward the Cafeteria Pavilion', distance: '85 m', time: '1.5 min' });
-      steps.push({ text: 'Enter open-air Student Canteen & Food Counters', distance: '10 m', time: '0.5 min' });
-    } else {
-      steps.push({ text: `Follow direct campus signage toward ${activeLocation.buildingName}`, distance: '90 m', time: '2 mins' });
-      steps.push({ text: `Arrive at ${activeLocation.name}`, distance: '15 m', time: '0.5 min' });
     }
+  }, [searchParams, markers]);
 
-    return steps;
-  }, [activeLocation, isWheelchairMode]);
+  // Handle floor switch zoom presets
+  const activeFloor = useMemo(() => {
+    return CAMPUS_FLOORS.find(f => f.id === activeFloorId) || CAMPUS_FLOORS[0];
+  }, [activeFloorId]);
+
+  const handleFloorChange = (floorId: number) => {
+    setActiveFloorId(floorId);
+    setPanOffset({ x: 0, y: 0 });
+    setZoomLevel(floorId === -1 ? 1 : 1.35);
+  };
+
+  // Helper to determine real-time status of a marker
+  const getMarkerStatus = (marker: CampusMapMarker): 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'INACTIVE' => {
+    if (marker.isInactive) return 'INACTIVE';
+    if (marker.isMaintenance) return 'MAINTENANCE';
+    if (marker.roomNumber) {
+      const liveState = timetableService.getRoomState(marker.roomNumber);
+      if (liveState.status === 'OCCUPIED') return 'OCCUPIED';
+      if (liveState.status === 'MAINTENANCE') return 'MAINTENANCE';
+      if (liveState.status === 'INACTIVE') return 'INACTIVE';
+    }
+    return 'AVAILABLE';
+  };
+
+  // Filtered Markers for map surface
+  const filteredMarkers = useMemo(() => {
+    return markers.filter(m => {
+      const matchesFloor = activeFloorId === -1 || m.floor === activeFloorId;
+      const matchesCat = selectedCategory === 'ALL' || m.category === selectedCategory;
+      const matchesSearch = !searchQuery.trim() || 
+        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.roomNumber && m.roomNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (m.department && m.department.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesAccessibility = !wheelchairOnly || m.isAccessible;
+      return matchesFloor && matchesCat && matchesSearch && matchesAccessibility;
+    });
+  }, [markers, activeFloorId, selectedCategory, searchQuery, wheelchairOnly]);
+
+  // Search Results for dropdown
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return markers.filter(m => 
+      (m.roomNumber && m.roomNumber.toLowerCase().includes(q)) ||
+      m.name.toLowerCase().includes(q) ||
+      (m.department && m.department.toLowerCase().includes(q)) ||
+      m.category.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [markers, searchQuery]);
+
+  // Update route calculation
+  useEffect(() => {
+    if (isRoutingActive && startNodeId && targetNodeId) {
+      const result = campusMapService.calculateRoute(startNodeId, targetNodeId, wheelchairOnly);
+      setRouteResult(result);
+    } else {
+      setRouteResult(null);
+    }
+  }, [isRoutingActive, startNodeId, targetNodeId, wheelchairOnly]);
+
+  // Pan interaction handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPanOffset({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Start route to marker
+  const handleNavigateToMarker = (marker: CampusMapMarker) => {
+    const node = MAP_NODES.find(n => n.floor === marker.floor && (n.name.toLowerCase().includes(marker.name.toLowerCase()) || n.id.includes(marker.id)))
+      || MAP_NODES.find(n => n.floor === marker.floor)
+      || MAP_NODES[0];
+    
+    setTargetNodeId(node.id);
+    setIsRoutingActive(true);
+  };
+
+  // Select room and center viewport
+  const handleSelectRoom = (marker: CampusMapMarker) => {
+    setSelectedMarker(marker);
+    if (activeFloorId !== -1 && activeFloorId !== marker.floor) {
+      handleFloorChange(marker.floor);
+    }
+    setIsSearchDropdownOpen(false);
+  };
+
+  // Live schedule & class info for selected marker
+  const selectedRoomDetails = useMemo(() => {
+    if (!selectedMarker?.roomNumber) return null;
+    const roomNum = selectedMarker.roomNumber;
+    const roomState = timetableService.getRoomState(roomNum);
+    const dayOfWeek = new Date().getDay() || 1;
+    const todayEntries = timetableService.getEntries().filter(
+      e => e.room.toLowerCase() === roomNum.toLowerCase() && e.day_of_week === dayOfWeek
+    ).sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+    const status = getMarkerStatus(selectedMarker);
+
+    return {
+      status,
+      current: roomState.currentClass,
+      next: roomState.nextClass,
+      todayEntries
+    };
+  }, [selectedMarker]);
+
+  // Admin Mode: Open edit modal
+  const handleOpenAdminEdit = (marker: CampusMapMarker) => {
+    setEditingRoomData({ ...marker });
+    setShowAdminEditModal(true);
+  };
+
+  // Admin Mode: Save changes
+  const handleSaveAdminEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRoomData.id) return;
+    campusMapService.addOrUpdateMarker(editingRoomData as CampusMapMarker);
+    if (selectedMarker?.id === editingRoomData.id) {
+      setSelectedMarker(editingRoomData as CampusMapMarker);
+    }
+    setAdminSaveSuccess(true);
+    setTimeout(() => {
+      setAdminSaveSuccess(false);
+      setShowAdminEditModal(false);
+    }, 1200);
+  };
 
   return (
-    <div className="bg-gray-50 min-h-screen pb-16">
-      {/* Top Banner */}
-      <div className="bg-[#003366] text-white py-8 border-b-4 border-yellow-500">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+      
+      {/* 1. TOP HEADER & ACCESSIBILITY CONTROLS */}
+      <header className="bg-[#003366] text-white border-b border-blue-900 px-4 py-3 flex items-center justify-between shadow-md">
+        <div className="flex items-center space-x-3">
+          <Link to="/" className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#003366] font-extrabold text-xs">
+              SC
+            </div>
             <div>
-              <div className="flex items-center space-x-2 text-yellow-400 text-xs uppercase font-extrabold tracking-wider mb-1">
-                <Compass size={16} />
-                <span>Interactive Campus Navigation</span>
-              </div>
-              <h1 className="text-3xl font-extrabold uppercase tracking-tight">3D Campus Map & Directions</h1>
-              <p className="text-sm text-blue-200 mt-1">
-                Sathaye College Campus • Real-time indoor & outdoor routing with wheelchair-friendly accessible paths
-              </p>
+              <span className="font-bold text-sm sm:text-base tracking-tight">Sathaye 2D Campus Master Blueprint</span>
+              <span className="hidden sm:inline-block ml-2 px-2 py-0.5 text-[10px] font-bold bg-amber-400 text-slate-900 rounded uppercase">
+                Real Floor Plan Model
+              </span>
             </div>
-
-            {/* Accessibility / Wheelchair Toggle */}
-            <button
-              onClick={() => setIsWheelchairMode(!isWheelchairMode)}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow ${
-                isWheelchairMode
-                  ? 'bg-yellow-400 text-[#003366] ring-2 ring-yellow-300'
-                  : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
-              }`}
-            >
-              <Accessibility size={18} />
-              <span>{isWheelchairMode ? 'Wheelchair Route: ACTIVE' : 'Wheelchair-Friendly Mode'}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        {/* Controls Bar */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search rooms (e.g. 204), labs, library, canteen..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:border-[#003366] focus:bg-white"
-            />
-          </div>
-
-          {/* Floor Filters */}
-          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 lg:pb-0">
-            <span className="text-xs font-bold text-gray-500 mr-1 flex items-center shrink-0">
-              <Layers size={14} className="mr-1" /> Floor:
-            </span>
-            {(['all', 0, 1, 2, 3, 4] as const).map(fl => (
-              <button
-                key={fl}
-                onClick={() => setSelectedFloor(fl)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors shrink-0 ${
-                  selectedFloor === fl
-                    ? 'bg-[#003366] text-white shadow'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {fl === 'all' ? 'All Floors' : fl === 0 ? 'Ground' : `${fl}F`}
-              </button>
-            ))}
-          </div>
-
-          {/* Category Filters */}
-          <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 lg:pb-0">
-            <span className="text-xs font-bold text-gray-500 mr-1 flex items-center shrink-0">
-              <Filter size={14} className="mr-1" /> Type:
-            </span>
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'classroom', label: 'Classrooms' },
-              { id: 'lab', label: 'Labs' },
-              { id: 'library', label: 'Library' },
-              { id: 'canteen', label: 'Canteen' },
-              { id: 'medical', label: 'Medical' }
-            ].map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-                  selectedCategory === cat.id
-                    ? 'bg-yellow-500 text-[#003366] font-bold'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
+          </Link>
         </div>
 
-        {/* Main Grid: 3D Map Canvas & Navigation Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Interactive Isometric Canvas */}
-          <div className="lg:col-span-2 bg-slate-900 rounded-2xl shadow-lg border border-slate-700 overflow-hidden relative min-h-[520px] flex flex-col">
-            {/* Top Canvas Bar */}
-            <div className="bg-slate-800/90 backdrop-blur px-4 py-2.5 flex items-center justify-between border-b border-slate-700 z-10">
-              <div className="flex items-center space-x-2 text-xs font-bold text-yellow-400">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Live Campus Isometric Plan</span>
-              </div>
-              <div className="text-xs text-slate-300">
-                Click any marker to inspect & navigate
-              </div>
+        <div className="flex items-center space-x-2">
+          {/* Admin Map Mode Toggle */}
+          <button
+            onClick={() => setIsAdminMode(!isAdminMode)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all ${
+              isAdminMode 
+                ? 'bg-amber-400 text-slate-900 shadow-sm ring-2 ring-amber-300' 
+                : 'bg-blue-900/70 text-blue-200 hover:bg-blue-800'
+            }`}
+          >
+            <Wrench size={14} />
+            <span>{isAdminMode ? 'Admin Mode ON' : 'Admin Mode'}</span>
+          </button>
+
+          {/* Wheelchair Accessibility Filter */}
+          <button
+            onClick={() => setWheelchairOnly(!wheelchairOnly)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
+              wheelchairOnly 
+                ? 'bg-emerald-500 text-white shadow' 
+                : 'bg-blue-900/60 text-blue-200 hover:bg-blue-800'
+            }`}
+            title="Show only verified wheelchair accessible routes and rooms"
+          >
+            <Accessibility size={15} />
+            <span className="hidden sm:inline">Wheelchair Paths</span>
+          </button>
+          
+          <Link
+            to="/portal"
+            className="px-3 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-[#003366] rounded-lg text-xs font-bold transition-colors"
+          >
+            Portal
+          </Link>
+        </div>
+      </header>
+
+      {/* 2. MAIN MAP SHELL */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+        
+        {/* Left Side Control & Search Panel */}
+        <div className="w-full lg:w-80 xl:w-96 bg-white border-r border-gray-200 flex flex-col z-20 shadow-sm max-h-[35vh] lg:max-h-none overflow-y-auto">
+          
+          {/* FLOOR MAP UX: SELECTABLE FLOOR TABS */}
+          <div className="p-3 bg-slate-50 border-b border-gray-200">
+            <label className="block text-[11px] font-bold uppercase text-gray-500 tracking-wider mb-1.5">
+              Select Campus Level
+            </label>
+            <div className="grid grid-cols-5 gap-1">
+              {CAMPUS_FLOORS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => handleFloorChange(f.id)}
+                  className={`py-2 px-1 text-[11px] font-black rounded-lg transition-all text-center ${
+                    activeFloorId === f.id
+                      ? 'bg-[#003366] text-white shadow-sm'
+                      : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                  }`}
+                >
+                  <div>{f.code}</div>
+                  <div className="text-[9px] font-medium opacity-80 truncate">{f.name.split(' ')[0]}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* MAP SEARCH: SEARCH BAR WITH AUTOCOMPLETE */}
+          <div className="p-3 border-b border-gray-200 space-y-2 relative">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onFocus={() => setIsSearchDropdownOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setIsSearchDropdownOpen(true);
+                }}
+                placeholder="Search classrooms (204), dept, labs, library..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003366]"
+              />
+              <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2" />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsSearchDropdownOpen(false);
+                  }}
+                  className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
-            {/* Campus SVG Stage with Buildings & Nodes */}
-            <div className="flex-1 relative w-full h-full p-4 flex items-center justify-center overflow-hidden">
-              <svg viewBox="0 0 800 600" className="w-full h-full max-h-[500px] select-none">
-                <defs>
-                  {/* Gradients for 3D buildings */}
-                  <linearGradient id="mainBldgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#1e3a8a" />
-                    <stop offset="100%" stopColor="#0f172a" />
-                  </linearGradient>
-                  <linearGradient id="itBldgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#0284c7" />
-                    <stop offset="100%" stopColor="#0369a1" />
-                  </linearGradient>
-                  <linearGradient id="canteenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#ea580c" />
-                    <stop offset="100%" stopColor="#9a3412" />
-                  </linearGradient>
-                  <linearGradient id="turfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#15803d" />
-                    <stop offset="100%" stopColor="#166534" />
-                  </linearGradient>
-                  <filter id="dropGlow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="6" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                  </filter>
-                </defs>
-
-                {/* Campus Ground Plane (Isometric Polygon) */}
-                <polygon
-                  points="400,60 760,240 400,560 40,380"
-                  fill="#1e293b"
-                  stroke="#334155"
-                  strokeWidth="3"
-                />
-
-                {/* Pathway Network */}
-                <path
-                  d="M 400,520 L 400,280 L 580,200 M 400,380 L 220,300 M 400,340 L 520,390"
-                  stroke={isWheelchairMode ? "#facc15" : "#64748b"}
-                  strokeWidth={isWheelchairMode ? "4" : "3"}
-                  strokeDasharray={isWheelchairMode ? "6,4" : "none"}
-                  fill="none"
-                />
-
-                {/* Building 1: Kashinath Dhuru Auditorium (Top) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-auditorium') || null)}>
-                  <polygon points="400,100 480,140 400,180 320,140" fill="#334155" stroke="#475569" strokeWidth="2" />
-                  <polygon points="320,140 400,180 400,220 320,180" fill="#1e293b" />
-                  <polygon points="400,180 480,140 480,180 400,220" fill="#0f172a" />
-                  <text x="400" y="145" textAnchor="middle" fill="#f8fafc" fontSize="11" fontWeight="bold">Auditorium</text>
-                </g>
-
-                {/* Building 2: Main Academic Block (Left) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-room-204') || null)}>
-                  <polygon points="260,200 360,250 260,300 160,250" fill="url(#mainBldgGrad)" stroke="#3b82f6" strokeWidth="2" />
-                  <polygon points="160,250 260,300 260,380 160,330" fill="#1e3a8a" opacity="0.9" />
-                  <polygon points="260,300 360,250 360,330 260,380" fill="#172554" />
-                  <text x="260" y="255" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold">Main Academic Block</text>
-                  <text x="260" y="272" textAnchor="middle" fill="#93c5fd" fontSize="9">Rooms 101-205 • Labs • Admin</text>
-                </g>
-
-                {/* Building 3: IT & Self-Finance Wing (Right) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-it-lab-1') || null)}>
-                  <polygon points="560,180 660,230 560,280 460,230" fill="url(#itBldgGrad)" stroke="#38bdf8" strokeWidth="2" />
-                  <polygon points="460,230 560,280 560,360 460,310" fill="#0369a1" opacity="0.9" />
-                  <polygon points="560,280 660,230 660,310 560,360" fill="#0c4a6e" />
-                  <text x="560" y="235" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold">IT & SF Wing</text>
-                  <text x="560" y="252" textAnchor="middle" fill="#bae6fd" fontSize="9">IT Lab 1 • Room 402</text>
-                </g>
-
-                {/* Building 4: Central Library (Center-Left) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-central-lib') || null)}>
-                  <polygon points="220,360 300,400 220,440 140,400" fill="#475569" stroke="#94a3b8" strokeWidth="2" />
-                  <polygon points="140,400 220,440 220,490 140,450" fill="#334155" />
-                  <polygon points="220,440 300,400 300,450 220,490" fill="#1e293b" />
-                  <text x="220" y="405" textAnchor="middle" fill="#f8fafc" fontSize="11" fontWeight="bold">Central Library</text>
-                </g>
-
-                {/* Building 5: Student Canteen (Center-Right) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-canteen') || null)}>
-                  <polygon points="480,350 560,390 480,430 400,390" fill="url(#canteenGrad)" stroke="#fb923c" strokeWidth="2" />
-                  <polygon points="400,390 480,430 480,470 400,430" fill="#9a3412" />
-                  <polygon points="480,430 560,390 560,430 480,470" fill="#7c2d12" />
-                  <text x="480" y="395" textAnchor="middle" fill="#ffffff" fontSize="11" fontWeight="bold">Student Canteen</text>
-                </g>
-
-                {/* Facility: Multi-Sport Synthetic Turf (Far Right) */}
-                <g className="cursor-pointer" onClick={() => setActiveLocation(CAMPUS_LOCATIONS.find(l => l.id === 'loc-sports-turf') || null)}>
-                  <polygon points="650,330 730,370 650,410 570,370" fill="url(#turfGrad)" stroke="#4ade80" strokeWidth="2" />
-                  <text x="650" y="375" textAnchor="middle" fill="#ffffff" fontSize="10" fontWeight="bold">Sports Turf</text>
-                </g>
-
-                {/* Campus Main Gate Point */}
-                <g>
-                  <circle cx="400" cy="530" r="10" fill="#eab308" stroke="#ffffff" strokeWidth="3" />
-                  <text x="400" y="555" textAnchor="middle" fill="#fef08a" fontSize="11" fontWeight="bold">Campus Main Entrance</text>
-                </g>
-
-                {/* Interactive Location Marker Pins */}
-                {filteredLocations.map(loc => {
-                  const isSelected = activeLocation?.id === loc.id;
-                  const cx = 80 + (loc.x * 6.4);
-                  const cy = 100 + (loc.y * 4.2);
-
+            {/* Instant Search Results Dropdown */}
+            {isSearchDropdownOpen && searchResults.length > 0 && (
+              <div className="absolute left-3 right-3 top-11 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-72 overflow-y-auto divide-y divide-gray-100">
+                {searchResults.map(result => {
+                  const status = getMarkerStatus(result);
                   return (
-                    <g
-                      key={loc.id}
-                      className="cursor-pointer transition-transform hover:scale-125"
-                      onClick={() => {
-                        setActiveLocation(loc);
-                        setIsNavigating(true);
-                      }}
-                    >
-                      {/* Active glow pulse */}
-                      {isSelected && (
-                        <circle cx={cx} cy={cy} r="18" fill="#facc15" opacity="0.3" className="animate-ping" />
-                      )}
-
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r={isSelected ? "11" : "8"}
-                        fill={isSelected ? "#facc15" : loc.type === 'canteen' ? '#fb923c' : loc.type === 'library' ? '#38bdf8' : '#3b82f6'}
-                        stroke="#ffffff"
-                        strokeWidth="2.5"
-                      />
-
-                      {/* Small text label */}
-                      <text
-                        x={cx}
-                        y={cy - 12}
-                        textAnchor="middle"
-                        fill={isSelected ? '#facc15' : '#ffffff'}
-                        fontSize="10"
-                        fontWeight="bold"
-                        className="drop-shadow"
-                      >
-                        {loc.name.split(' ')[0]} {loc.roomNumber ? `(${loc.roomNumber})` : ''}
-                      </text>
-                    </g>
+                    <div key={result.id} className="p-2.5 hover:bg-blue-50/50 flex items-center justify-between text-xs">
+                      <div className="pr-2">
+                        <div className="font-bold text-gray-900 flex items-center gap-1.5">
+                          <span>{result.roomNumber ? `Room ${result.roomNumber}` : result.name}</span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                            status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800' :
+                            status === 'OCCUPIED' ? 'bg-rose-100 text-rose-800' :
+                            status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {status}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                          Floor {result.floor === 0 ? 'Ground' : result.floor} • {result.department || result.category}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleSelectRoom(result)}
+                          className="px-2 py-1 bg-[#003366] text-white rounded text-[10px] font-bold hover:bg-blue-900"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleSelectRoom(result);
+                            handleNavigateToMarker(result);
+                          }}
+                          className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-[10px] font-bold hover:bg-gray-200"
+                        >
+                          Navigate
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
-              </svg>
-            </div>
-
-            {/* Bottom Status Ticker */}
-            <div className="bg-slate-800 px-4 py-2 flex items-center justify-between text-xs text-slate-300 border-t border-slate-700">
-              <span className="flex items-center">
-                <ShieldCheck size={14} className="mr-1.5 text-emerald-400" />
-                Emergency evacuation gathering zone: Central Quadrangle (Main Gate)
-              </span>
-              <span className="text-yellow-400 font-bold">
-                {isWheelchairMode ? 'Wheelchair step-free paths highlighted in yellow' : 'Standard walking paths active'}
-              </span>
-            </div>
-          </div>
-
-          {/* Right Panel: Selected Destination & Navigation Guide */}
-          <div className="space-y-6">
-            {activeLocation ? (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="bg-[#003366] text-white p-5 border-b-4 border-yellow-500">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="bg-yellow-400 text-[#003366] text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider">
-                        {activeLocation.type}
-                      </span>
-                      <h3 className="text-xl font-extrabold mt-1">{activeLocation.name}</h3>
-                      <p className="text-xs text-blue-200">
-                        {activeLocation.buildingName} • {activeLocation.floorLabel}
-                      </p>
-                    </div>
-                    <span className="px-2 py-1 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded-lg border border-emerald-500/30">
-                      {activeLocation.currentStatus}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-5 space-y-4">
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    {activeLocation.description}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                      <span className="text-gray-400 block text-[10px] uppercase font-bold">Accessibility</span>
-                      <span className="font-bold text-gray-800 flex items-center mt-0.5">
-                        <Accessibility size={14} className="mr-1 text-blue-600" />
-                        {activeLocation.isAccessible ? 'Wheelchair Accessible' : 'Stair Access'}
-                      </span>
-                    </div>
-                    <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                      <span className="text-gray-400 block text-[10px] uppercase font-bold">Elevator</span>
-                      <span className="font-bold text-gray-800 flex items-center mt-0.5">
-                        <Building2 size={14} className="mr-1 text-yellow-600" />
-                        {activeLocation.elevatorNearby ? 'Elevator Nearby' : 'Ground Level'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Turn-by-Turn Navigation Card */}
-                  <div className="border border-blue-100 bg-blue-50/60 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-bold text-xs uppercase tracking-wider text-[#003366] flex items-center">
-                        <Navigation size={15} className="mr-1.5 text-yellow-600" />
-                        Turn-by-Turn Directions
-                      </h4>
-                      <span className="text-[11px] font-bold text-blue-800 bg-white px-2 py-0.5 rounded shadow-sm">
-                        Approx 3 mins walk (140 m)
-                      </span>
-                    </div>
-
-                    <div className="space-y-3 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-blue-200">
-                      {routeSteps.map((step, idx) => (
-                        <div key={idx} className="flex items-start space-x-3 relative text-xs">
-                          <div className="w-6 h-6 rounded-full bg-white border-2 border-[#003366] text-[#003366] font-bold flex items-center justify-center shrink-0 z-10 text-[10px]">
-                            {idx + 1}
-                          </div>
-                          <div className="flex-1 pt-0.5">
-                            <p className="font-medium text-gray-800">{step.text}</p>
-                            <span className="text-[10px] text-gray-400">
-                              {step.distance} • {step.time}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Contextual Action Buttons */}
-                  {activeLocation.type === 'canteen' && (
-                    <button
-                      onClick={() => navigate('/canteen')}
-                      className="w-full bg-[#003366] hover:bg-blue-900 text-yellow-400 font-bold text-xs py-2.5 rounded-xl shadow transition-colors flex items-center justify-center space-x-1.5"
-                    >
-                      <Coffee size={16} />
-                      <span>View Canteen Menu & Order Online</span>
-                    </button>
-                  )}
-
-                  {activeLocation.type === 'library' && (
-                    <button
-                      onClick={() => navigate('/library')}
-                      className="w-full bg-[#003366] hover:bg-blue-900 text-yellow-400 font-bold text-xs py-2.5 rounded-xl shadow transition-colors flex items-center justify-center space-x-1.5"
-                    >
-                      <BookOpen size={16} />
-                      <span>Check Reading Hall Seats & Catalog</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-8 border border-gray-200 text-center shadow-sm">
-                <MapPin size={48} className="mx-auto text-gray-300 mb-3" />
-                <h3 className="font-bold text-gray-800 text-base">Select a Campus Location</h3>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  Choose a room, department, library, or canteen from the map or list below to view turn-by-turn directions.
-                </p>
               </div>
             )}
 
-            {/* Quick Destinations List */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-[#003366]">
-                  Popular Campus Destinations ({filteredLocations.length})
-                </h4>
-              </div>
-              <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
-                {filteredLocations.map(loc => (
-                  <li
-                    key={loc.id}
-                    onClick={() => {
-                      setActiveLocation(loc);
-                      setIsNavigating(true);
-                    }}
-                    className={`p-3.5 hover:bg-blue-50/50 cursor-pointer transition-colors flex items-center justify-between ${
-                      activeLocation?.id === loc.id ? 'bg-blue-50 border-l-4 border-[#003366]' : ''
-                    }`}
-                  >
-                    <div>
-                      <h5 className="font-bold text-xs text-gray-900">{loc.name}</h5>
-                      <p className="text-[11px] text-gray-500">{loc.buildingName} • {loc.floorLabel}</p>
-                    </div>
-                    <ChevronRight size={16} className="text-gray-400" />
-                  </li>
-                ))}
-              </ul>
+            {/* Category Quick Filter Chips */}
+            <div className="flex items-center space-x-1 overflow-x-auto pb-1 text-[10px]">
+              {['ALL', 'ACADEMIC', 'LAB', 'LIBRARY', 'CANTEEN', 'FACILITY', 'ADMIN'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-2 py-1 rounded font-bold whitespace-nowrap transition-colors ${
+                    selectedCategory === cat
+                      ? 'bg-blue-100 text-[#003366]'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* Wayfinding Routing Block */}
+          <div className="p-3 border-b border-gray-200 bg-blue-50/40">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-gray-900 flex items-center space-x-1">
+                <Navigation size={13} className="text-[#003366]" />
+                <span>Multi-Floor Wayfinding</span>
+              </span>
+              <button
+                onClick={() => setIsRoutingActive(!isRoutingActive)}
+                className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                  isRoutingActive ? 'bg-rose-100 text-rose-700' : 'bg-[#003366] text-white'
+                }`}
+              >
+                {isRoutingActive ? 'Clear Route' : 'Find Route'}
+              </button>
+            </div>
+
+            {isRoutingActive && (
+              <div className="space-y-2 text-xs">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Starting Point</label>
+                  <select
+                    value={startNodeId}
+                    onChange={(e) => setStartNodeId(e.target.value)}
+                    className="w-full mt-0.5 p-1.5 bg-white border border-gray-300 rounded text-xs font-medium"
+                  >
+                    {MAP_NODES.map(n => (
+                      <option key={n.id} value={n.id}>
+                        Floor {n.floor === 0 ? 'G' : n.floor}: {n.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Destination</label>
+                  <select
+                    value={targetNodeId}
+                    onChange={(e) => setTargetNodeId(e.target.value)}
+                    className="w-full mt-0.5 p-1.5 bg-white border border-gray-300 rounded text-xs font-medium"
+                  >
+                    <option value="">Select destination room...</option>
+                    {MAP_NODES.map(n => (
+                      <option key={n.id} value={n.id}>
+                        Floor {n.floor === 0 ? 'G' : n.floor}: {n.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {routeResult && routeResult.steps.length > 0 && (
+                  <div className="mt-2.5 p-2 bg-white rounded-lg border border-blue-200 shadow-xs">
+                    <div className="text-[11px] font-bold text-[#003366] mb-1.5 flex justify-between">
+                      <span>Total Walk: ~{routeResult.totalDistance}m</span>
+                      <span>{wheelchairOnly ? 'Elevator Friendly' : 'Stairs & Ramp'}</span>
+                    </div>
+                    <ol className="space-y-1 text-[10px] text-gray-700">
+                      {routeResult.steps.map((st, idx) => (
+                        <li key={idx} className="flex items-start space-x-1.5">
+                          <span className="w-3.5 h-3.5 rounded-full bg-blue-100 text-[#003366] flex-shrink-0 flex items-center justify-center font-bold text-[8px] mt-0.5">
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <span className="font-semibold text-gray-900">Floor {st.floor === 0 ? 'G' : st.floor}:</span> {st.instruction}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Filtered Rooms List */}
+          <div className="p-3 flex-1 overflow-y-auto">
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-wider mb-2 flex justify-between items-center">
+              <span>Campus Locations ({filteredMarkers.length})</span>
+              <span className="text-[9px] text-gray-400">Click room to inspect</span>
+            </div>
+            <div className="space-y-1.5">
+              {filteredMarkers.map(m => {
+                const status = getMarkerStatus(m);
+                const isSelected = selectedMarker?.id === m.id;
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => handleSelectRoom(m)}
+                    className={`p-2 rounded-lg cursor-pointer transition-all border text-left flex items-start justify-between ${
+                      isSelected
+                        ? 'bg-blue-50 border-blue-400 shadow-xs'
+                        : 'bg-white hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex-1 pr-2">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-bold text-xs text-gray-900 leading-tight">
+                          {m.name}
+                        </span>
+                        {m.roomNumber && (
+                          <span className="px-1.5 py-0.2 bg-gray-100 text-gray-700 rounded text-[9px] font-mono font-bold">
+                            {m.roomNumber}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        Floor {m.floor === 0 ? 'Ground' : m.floor} • {m.department || m.category}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end space-y-1">
+                      {/* Status dot */}
+                      <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold uppercase ${
+                        status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800' :
+                        status === 'OCCUPIED' ? 'bg-rose-100 text-rose-800' :
+                        status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {status}
+                      </span>
+                      {m.isAccessible && (
+                        <span title="Wheelchair Accessible" className="text-emerald-600">
+                          <Accessibility size={11} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
         </div>
+
+        {/* Center: 2D Floor Plan Canvas Viewport with Pan & Zoom */}
+        <div 
+          className="flex-1 bg-slate-900 relative overflow-hidden flex items-center justify-center select-none cursor-grab active:cursor-grabbing"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        >
+          
+          {/* Zoom & Reset Floating Controls */}
+          <div className="absolute top-4 right-4 z-30 flex flex-col space-y-2 bg-white/95 backdrop-blur rounded-xl p-1.5 shadow-lg border border-gray-200">
+            <button
+              onClick={() => setZoomLevel(prev => Math.min(prev + 0.25, 3))}
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 transition-colors"
+              title="Zoom In"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <button
+              onClick={() => setZoomLevel(prev => Math.max(prev - 0.25, 0.75))}
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 transition-colors"
+              title="Zoom Out"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <button
+              onClick={() => { setZoomLevel(1); setPanOffset({ x: 0, y: 0 }); }}
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-700 transition-colors"
+              title="Reset View"
+            >
+              <RotateCcw size={18} />
+            </button>
+          </div>
+
+          {/* Blueprint Title Badge & Status Legend */}
+          <div className="absolute top-4 left-4 z-30 bg-slate-900/90 backdrop-blur border border-slate-700 text-white p-2.5 rounded-xl text-xs shadow-md space-y-1.5">
+            <div>
+              <div className="font-bold text-amber-400">{activeFloor.name}</div>
+              <div className="text-[10px] text-slate-300">{activeFloor.description}</div>
+            </div>
+
+            {/* Status Legend */}
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-700 text-[9px]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Available</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Occupied</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Maintenance</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Selected</span>
+            </div>
+          </div>
+
+          {/* Master Transform Container */}
+          <div 
+            style={{
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
+              transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+              transformOrigin: 'center center'
+            }}
+            className="relative max-w-full max-h-full flex items-center justify-center"
+          >
+            {/* Master Campus Architectural Floor Plan Image */}
+            <div className="relative inline-block shadow-2xl rounded-lg overflow-hidden border-2 border-slate-700 bg-white">
+              <img
+                src="/campus-floor-plan.png"
+                alt="Sathaye College Campus Master Floor Plan"
+                className="w-[920px] max-w-none h-auto block select-none pointer-events-none"
+                draggable={false}
+              />
+
+              {/* Responsive SVG Overlay for Quadrant Highlights & Route Lines */}
+              <svg 
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                {/* Active Floor Quadrant Highlight */}
+                {activeFloorId !== -1 && (
+                  <rect
+                    x={activeFloor.quadrant.minX}
+                    y={activeFloor.quadrant.minY}
+                    width={activeFloor.quadrant.maxX - activeFloor.quadrant.minX}
+                    height={activeFloor.quadrant.maxY - activeFloor.quadrant.minY}
+                    fill="rgba(56, 189, 248, 0.05)"
+                    stroke="#38bdf8"
+                    strokeWidth="0.6"
+                    strokeDasharray="1.5, 1"
+                    className="animate-pulse"
+                  />
+                )}
+
+                {/* Drawn Route Polyline */}
+                {routeResult && routeResult.path.length > 1 && (
+                  <polyline
+                    points={routeResult.path.map(p => `${p.xPercent},${p.yPercent}`).join(' ')}
+                    fill="none"
+                    stroke="#e11d48"
+                    strokeWidth="1.2"
+                    strokeDasharray="2, 1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+
+                {/* Graph Node Route Dots */}
+                {routeResult && routeResult.path.map((node, i) => (
+                  <circle
+                    key={node.id}
+                    cx={node.xPercent}
+                    cy={node.yPercent}
+                    r={i === 0 || i === routeResult.path.length - 1 ? 1.8 : 0.9}
+                    fill={i === 0 ? '#10b981' : i === routeResult.path.length - 1 ? '#e11d48' : '#38bdf8'}
+                    stroke="#ffffff"
+                    strokeWidth="0.4"
+                  />
+                ))}
+              </svg>
+
+              {/* 4. INTERACTIVE MAP OVERLAY: TRANSPARENT HOTSPOT ZONES & PIN BADGES */}
+              {filteredMarkers.map(m => {
+                const isSelected = selectedMarker?.id === m.id;
+                const status = getMarkerStatus(m);
+
+                // Color mappings:
+                // GREEN: Available, RED: Occupied, YELLOW: Maintenance, BLUE: Selected, GRAY: Inactive
+                let statusBg = 'bg-emerald-500';
+                let statusBorder = 'border-emerald-400';
+                let hotspotBoxBg = 'bg-emerald-500/15 hover:bg-emerald-500/30';
+                let hotspotBoxBorder = 'border-emerald-500/50';
+
+                if (isSelected) {
+                  statusBg = 'bg-blue-600';
+                  statusBorder = 'border-blue-300 ring-2 ring-blue-400';
+                  hotspotBoxBg = 'bg-blue-600/30';
+                  hotspotBoxBorder = 'border-blue-500';
+                } else if (status === 'OCCUPIED') {
+                  statusBg = 'bg-rose-600';
+                  statusBorder = 'border-rose-400';
+                  hotspotBoxBg = 'bg-rose-600/15 hover:bg-rose-600/30';
+                  hotspotBoxBorder = 'border-rose-500/50';
+                } else if (status === 'MAINTENANCE') {
+                  statusBg = 'bg-amber-500';
+                  statusBorder = 'border-amber-300';
+                  hotspotBoxBg = 'bg-amber-500/20 hover:bg-amber-500/35';
+                  hotspotBoxBorder = 'border-amber-500/60';
+                } else if (status === 'INACTIVE') {
+                  statusBg = 'bg-gray-500';
+                  statusBorder = 'border-gray-400';
+                  hotspotBoxBg = 'bg-gray-500/15';
+                  hotspotBoxBorder = 'border-gray-500/40';
+                }
+
+                const width = m.widthPercent || 7;
+                const height = m.heightPercent || 6;
+
+                return (
+                  <React.Fragment key={m.id}>
+                    {/* Transparent Clickable Bounding Box Hotspot Zone */}
+                    <div
+                      style={{
+                        left: `${m.xPercent - width / 2}%`,
+                        top: `${m.yPercent - height / 2}%`,
+                        width: `${width}%`,
+                        height: `${height}%`
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectRoom(m);
+                      }}
+                      title={`${m.name} (${status}) - Click to inspect`}
+                      className={`absolute rounded cursor-pointer transition-all border ${hotspotBoxBg} ${hotspotBoxBorder} ${
+                        isSelected ? 'border-2 ring-2 ring-blue-400/80 z-25' : 'hover:scale-105 z-10'
+                      }`}
+                    />
+
+                    {/* Interactive Marker Pin & Room Number Badge */}
+                    <div
+                      style={{ left: `${m.xPercent}%`, top: `${m.yPercent}%` }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectRoom(m);
+                      }}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all z-20 pointer-events-auto ${
+                        isSelected ? 'scale-125 z-30' : 'hover:scale-110'
+                      }`}
+                    >
+                      {/* Status indicator pin badge */}
+                      <div className={`w-5 h-5 rounded-full shadow-md flex items-center justify-center text-white border-2 border-white ${statusBg} ${statusBorder}`}>
+                        {m.category === 'LIBRARY' ? <BookOpen size={9} /> :
+                         m.category === 'CANTEEN' ? <Coffee size={9} /> :
+                         m.category === 'LAB' ? <Building2 size={9} /> : <MapPin size={9} />}
+                      </div>
+
+                      {/* Room Number pill */}
+                      <div className={`absolute top-full mt-0.5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] font-extrabold px-1.5 py-0.2 rounded shadow-sm text-white ${
+                        isSelected ? 'bg-blue-900' : 'bg-slate-900/90'
+                      }`}>
+                        {m.roomNumber || m.name.split(' ')[0]}
+                      </div>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 6. MAP DETAIL DRAWER (RIGHT-SIDE DRAWER OR MOBILE BOTTOM SHEET) */}
+          {selectedMarker && (
+            <div className="absolute right-0 top-0 bottom-0 w-full sm:w-96 bg-white shadow-2xl border-l border-gray-200 p-5 z-40 overflow-y-auto animate-in slide-in-from-right duration-200 flex flex-col justify-between">
+              <div className="space-y-4">
+                {/* Header */}
+                <div className="flex items-start justify-between pb-3 border-b border-gray-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        selectedRoomDetails?.status === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-800' :
+                        selectedRoomDetails?.status === 'OCCUPIED' ? 'bg-rose-100 text-rose-800' :
+                        selectedRoomDetails?.status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedRoomDetails?.status}
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-bold uppercase">
+                        Floor {selectedMarker.floor === 0 ? 'Ground' : selectedMarker.floor}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 mt-1">
+                      {selectedMarker.roomNumber ? `Room ${selectedMarker.roomNumber}` : selectedMarker.name}
+                    </h3>
+                    <p className="text-xs text-gray-600 font-medium">
+                      {selectedMarker.name}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {isAdminMode && (
+                      <button
+                        onClick={() => handleOpenAdminEdit(selectedMarker)}
+                        title="Admin: Edit Room Details & Maintenance"
+                        className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg border border-amber-200 text-xs font-bold"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedMarker(null)}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Core Specifications Box */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-[10px] text-gray-500 uppercase font-bold">Department</span>
+                    <div className="font-semibold text-gray-900 truncate mt-0.5">
+                      {selectedMarker.department || 'General Campus'}
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-[10px] text-gray-500 uppercase font-bold">Seating Capacity</span>
+                    <div className="font-semibold text-gray-900 mt-0.5">
+                      {selectedMarker.capacity ? `${selectedMarker.capacity} Students` : 'Standard (60)'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Equipment Badges */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Room Equipment & Facilities
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                    {selectedMarker.hasProjector && (
+                      <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md font-semibold border border-blue-200 flex items-center gap-1">
+                        <Tv size={12} /> Projector & Screen
+                      </span>
+                    )}
+                    {selectedMarker.hasAc && (
+                      <span className="px-2 py-1 bg-sky-50 text-sky-700 rounded-md font-semibold border border-sky-200 flex items-center gap-1">
+                        <Wind size={12} /> Air Conditioned
+                      </span>
+                    )}
+                    {selectedMarker.hasWifi && (
+                      <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md font-semibold border border-purple-200 flex items-center gap-1">
+                        <Wifi size={12} /> Campus High-Speed Wi-Fi
+                      </span>
+                    )}
+                    {selectedMarker.hasWhiteboard && (
+                      <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md font-semibold border border-emerald-200 flex items-center gap-1">
+                        <Check size={12} /> Interactive Whiteboard
+                      </span>
+                    )}
+                    {selectedMarker.isAccessible && (
+                      <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md font-semibold border border-emerald-200 flex items-center gap-1">
+                        <Accessibility size={12} /> Wheelchair Access
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Current Class & Next Class Cards */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Live Class Status
+                  </span>
+                  
+                  {/* Current Class */}
+                  <div className={`p-3 rounded-xl border text-xs ${
+                    selectedRoomDetails?.current 
+                      ? 'bg-rose-50/70 border-rose-200 text-rose-950' 
+                      : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                  }`}>
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase mb-1">
+                      <span>Current Slot</span>
+                      <span>{selectedRoomDetails?.current ? 'In Progress' : 'Hall Free'}</span>
+                    </div>
+                    {selectedRoomDetails?.current ? (
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-sm text-gray-900">{selectedRoomDetails.current.subject}</div>
+                        <div className="text-gray-600 font-medium">Faculty: {selectedRoomDetails.current.faculty}</div>
+                        <div className="text-[11px] text-rose-700 font-mono font-bold">
+                          {selectedRoomDetails.current.startTime} - {selectedRoomDetails.current.endTime} • {selectedRoomDetails.current.division}
+                          {selectedRoomDetails.current.remainingMinutes > 0 && (
+                            <span className="ml-2 font-sans text-[10px] text-rose-600">
+                              ({selectedRoomDetails.current.remainingMinutes}m left)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-emerald-800 font-medium">
+                        No lecture in session. Classroom is open and available.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Next Class */}
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs space-y-0.5">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">
+                      Upcoming Next Lecture
+                    </div>
+                    {selectedRoomDetails?.next ? (
+                      <div>
+                        <div className="font-bold text-gray-900">{selectedRoomDetails.next.subject}</div>
+                        <div className="text-gray-600 font-medium">Faculty: {selectedRoomDetails.next.faculty}</div>
+                        <div className="text-[11px] text-[#003366] font-mono font-bold">
+                          Starts at {selectedRoomDetails.next.startTime} (until {selectedRoomDetails.next.endTime})
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-gray-500">No further scheduled lectures for today.</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Today's Complete Room Schedule */}
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                      Today's Full Schedule
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {selectedRoomDetails?.todayEntries.length || 0} Lectures
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1 text-xs">
+                    {selectedRoomDetails && selectedRoomDetails.todayEntries.length > 0 ? (
+                      selectedRoomDetails.todayEntries.map((e, idx) => (
+                        <div key={idx} className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+                          <div>
+                            <div className="font-bold text-gray-900 text-[11px]">{e.subjectCode} — {e.subject}</div>
+                            <div className="text-[10px] text-gray-500">{e.faculty} • {e.division}</div>
+                          </div>
+                          <div className="text-right font-mono text-[10px] font-bold text-[#003366]">
+                            {e.start_time} - {e.end_time}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-gray-400 text-xs">No scheduled lectures today.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Bottom Actions */}
+              <div className="pt-4 border-t border-gray-200 space-y-2">
+                <button
+                  onClick={() => handleNavigateToMarker(selectedMarker)}
+                  className="w-full py-2.5 bg-[#003366] hover:bg-blue-900 text-white text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
+                >
+                  <Navigation size={14} />
+                  <span>Navigate To Room</span>
+                </button>
+
+                {selectedMarker.roomNumber && (
+                  <Link
+                    to={`/portal?tab=timetable&room=${selectedMarker.roomNumber}`}
+                    className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition-colors"
+                  >
+                    <Calendar size={13} />
+                    <span>View Room Timetable</span>
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
+
       </div>
+
+      {/* 7. ADMIN MAP MODE: INLINE METADATA & MAINTENANCE MODAL */}
+      {showAdminEditModal && editingRoomData && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-lg w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  Admin Room Configuration & Maintenance
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Update spatial room metadata, capacity, department assignment, and maintenance flags.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowAdminEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {adminSaveSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Room configuration updated and synced to database!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveAdminEdit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Room Number</label>
+                  <input
+                    type="text"
+                    value={editingRoomData.roomNumber || ''}
+                    onChange={(e) => setEditingRoomData({ ...editingRoomData, roomNumber: e.target.value })}
+                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg font-bold font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Location Title</label>
+                  <input
+                    type="text"
+                    value={editingRoomData.name || ''}
+                    onChange={(e) => setEditingRoomData({ ...editingRoomData, name: e.target.value })}
+                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={editingRoomData.department || ''}
+                    onChange={(e) => setEditingRoomData({ ...editingRoomData, department: e.target.value })}
+                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Seating Capacity</label>
+                  <input
+                    type="number"
+                    value={editingRoomData.capacity || 60}
+                    onChange={(e) => setEditingRoomData({ ...editingRoomData, capacity: Number(e.target.value) })}
+                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Maintenance & Active Overrides */}
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <span className="font-bold text-amber-900 text-[11px] block">Operational Flags</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.isMaintenance || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, isMaintenance: e.target.checked })}
+                      className="rounded text-amber-600 focus:ring-0"
+                    />
+                    <span>Maintenance Mode (Yellow)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.isInactive || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, isInactive: e.target.checked })}
+                      className="rounded text-gray-600 focus:ring-0"
+                    />
+                    <span>Room Inactive (Gray)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Equipment Checkboxes */}
+              <div className="space-y-1.5">
+                <span className="font-bold text-gray-700 text-[11px] block">Facility Equipment</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.hasProjector || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, hasProjector: e.target.checked })}
+                      className="rounded text-[#003366] focus:ring-0"
+                    />
+                    <span>Projector & AV Screen</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.hasAc || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, hasAc: e.target.checked })}
+                      className="rounded text-[#003366] focus:ring-0"
+                    />
+                    <span>Air Conditioning</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.hasWifi || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, hasWifi: e.target.checked })}
+                      className="rounded text-[#003366] focus:ring-0"
+                    />
+                    <span>Wi-Fi Coverage</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={editingRoomData.hasWhiteboard || false}
+                      onChange={(e) => setEditingRoomData({ ...editingRoomData, hasWhiteboard: e.target.checked })}
+                      className="rounded text-[#003366] focus:ring-0"
+                    />
+                    <span>Interactive Whiteboard</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminEditModal(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#003366] hover:bg-blue-900 text-white rounded-lg font-bold shadow-xs flex items-center gap-1.5"
+                >
+                  <Save size={14} />
+                  <span>Save Room Configuration</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
-
 export default CampusMap;

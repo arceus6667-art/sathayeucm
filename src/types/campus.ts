@@ -248,6 +248,8 @@ export interface CanteenOrder {
   totalAmount: number;
   status: CanteenOrderStatus;
   tokenNumber: number;
+  token?: string;
+  tokenCode?: string;
   estimatedTime: string;
   createdAt: string;
   pickupSlot?: string;

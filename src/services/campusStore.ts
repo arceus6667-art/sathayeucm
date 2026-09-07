@@ -1646,6 +1646,27 @@ class CampusStore {
     return this.currentUser;
   }
 
+  public setCurrentUser(user: UserProfile | null): void {
+    this.currentUser = user;
+    if (user) {
+      localStorage.setItem('sathaye_auth_user', JSON.stringify(user));
+      localStorage.setItem('demo_role', user.role.toLowerCase());
+    } else {
+      localStorage.removeItem('sathaye_auth_user');
+      localStorage.removeItem('demo_role');
+    }
+    this.notify();
+  }
+
+  public getTimetableForRoom(roomCode: string): ClassScheduleItem[] {
+    const clean = roomCode.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return STUDENT_SCHEDULE.filter(s => {
+      const sRoom = (s.room || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const sId = (s.roomId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return sRoom.includes(clean) || clean.includes(sRoom) || sId.includes(clean) || clean.includes(sId);
+    });
+  }
+
   public switchDemoAccount(username: string): boolean {
     const account = DEMO_ACCOUNTS.find(a => a.user.username === username);
     if (account) {

@@ -166,7 +166,7 @@ export default function AdminDashboardOverview({
         </div>
       </div>
 
-      {/* 2. MAIN INTERACTIVE 3D CAMPUS MAP INTEGRATION */}
+      {/* 2. MAIN INTERACTIVE 2D CAMPUS MAP INTEGRATION */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
           <div>
@@ -206,7 +206,7 @@ export default function AdminDashboardOverview({
               onClick={() => onNavigateTab('map')}
               className="flex items-center gap-1 px-3 py-1.5 bg-[#003366] text-white hover:bg-blue-900 rounded-lg text-xs font-bold transition-colors"
             >
-              <span>Full Screen 3D Map</span>
+              <span>Full Screen 2D Map</span>
               <ExternalLink size={12} />
             </button>
           </div>

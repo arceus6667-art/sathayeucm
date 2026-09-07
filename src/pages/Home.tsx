@@ -3,11 +3,27 @@ import { mockNotices, mockEvents, mockFacilities, mockDepartments, principalMess
 import { ChevronRight, Calendar, ArrowRight, User, BookOpen, GraduationCap, Building, CheckCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SmartCampusStore } from '../smartCampusStore';
+import { TRANSLATIONS, SupportedLanguage } from '../services/translations';
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [lang, setLang] = useState<SupportedLanguage>(() => SmartCampusStore.getAccessibilityPrefs().language);
+
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      if (e.detail?.language) {
+        setLang(e.detail.language);
+      }
+    };
+    window.addEventListener('sathaye_accessibility_updated', handleUpdate);
+    return () => window.removeEventListener('sathaye_accessibility_updated', handleUpdate);
+  }, []);
+
+  const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
   const slides = [
-    { id: 1, image: '/WhatsApp%20Image%202026-09-07%20at%209.25.47%20AM.jpeg', title: 'Welcome to Sathaye College', subtitle: 'Empowering minds since 1959' },
+    { id: 1, image: '/WhatsApp%20Image%202026-09-07%20at%209.25.47%20AM.jpeg', title: t.home.heroTitle, subtitle: t.home.heroSubtitle },
     { id: 2, image: '/WhatsApp%20Image%202026-09-07%20at%209.13.05%20AM.jpeg', title: 'State-of-the-Art Infrastructure', subtitle: 'Modern auditoriums and facilities' },
     { id: 4, image: '/WhatsApp%20Image%202026-09-07%20at%209.11.20%20AM.jpeg', title: 'Vibrant Campus Life', subtitle: 'Nurturing creativity and innovation' },
     { id: 5, image: '/WhatsApp%20Image%202026-09-07%20at%209.09.32%20AM.jpeg', title: 'Holistic Development', subtitle: 'Focusing on education, culture, and sports' },
@@ -19,10 +35,10 @@ export default function Home() {
       setCurrentSlide((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [slides.length]);
 
   return (
-    <div className="w-full bg-white font-sans text-gray-800">
+    <main id="main-content" className="w-full bg-white font-sans text-gray-800">
       
       {/* Hero Slider */}
       <section className="relative h-[60vh] md:h-[80vh] w-full overflow-hidden bg-gray-900">
@@ -44,10 +60,10 @@ export default function Home() {
                   <p className="text-lg md:text-2xl text-yellow-400 font-medium drop-shadow-md">{slide.subtitle}</p>
                   <div className="mt-8 flex space-x-4">
                     <Link to="/page/3/about-college" className="bg-[#003366] hover:bg-blue-800 text-white px-6 py-3 rounded text-sm md:text-base font-semibold transition-colors border border-[#003366]">
-                      Discover More
+                      {t.home.discoverMore}
                     </Link>
                     <Link to="/admissions" className="bg-transparent hover:bg-yellow-500 text-yellow-400 hover:text-[#003366] px-6 py-3 rounded text-sm md:text-base font-semibold transition-colors border-2 border-yellow-500">
-                      Admissions 2026
+                      {t.home.admissions2026}
                     </Link>
                   </div>
                 </div>
@@ -69,7 +85,9 @@ export default function Home() {
 
       {/* Announcements Marquee */}
       <div className="bg-[#003366] text-white py-2 flex items-center border-b-[4px] border-yellow-500">
-        <div className="bg-yellow-500 text-[#003366] font-bold px-4 py-1 text-sm uppercase shrink-0 z-10 ml-4 md:ml-8 rounded-sm shadow-sm">Latest Updates</div>
+        <div className="bg-yellow-500 text-[#003366] font-bold px-4 py-1 text-sm uppercase shrink-0 z-10 ml-4 md:ml-8 rounded-sm shadow-sm">
+          {t.home.announcements}
+        </div>
         <div className="overflow-hidden whitespace-nowrap ml-4 flex-grow">
           <div className="animate-marquee inline-block text-sm font-medium">
             {mockNotices.map((n) => (
@@ -87,11 +105,11 @@ export default function Home() {
           {/* About College */}
           <div className="lg:col-span-7">
             <h3 className="text-[#003366] font-bold uppercase tracking-widest text-sm mb-2 flex items-center">
-              <span className="w-8 h-1 bg-yellow-500 mr-2 inline-block"></span> Welcome To
+              <span className="w-8 h-1 bg-yellow-500 mr-2 inline-block"></span> {t.home.welcomeTitle}
             </h3>
             <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-6 uppercase tracking-tight">Sathaye College</h2>
             <p className="text-gray-600 mb-4 leading-relaxed text-lg">
-              Established in 1959 by the Parle Tilak Vidyalaya Association, Sathaye College has grown into a premier institution of higher education in Mumbai. We offer a diverse range of undergraduate, postgraduate, and doctoral programs.
+              {t.home.welcomeDesc}
             </p>
             <p className="text-gray-600 mb-8 leading-relaxed">
               Our campus is a vibrant community where students are encouraged to explore their potential not just academically, but also in cultural activities, sports, and social service through NSS and NCC. With autonomous status granted in 2021, we continue to innovate our curriculum to meet global standards.
@@ -107,7 +125,7 @@ export default function Home() {
               </div>
             </div>
             <Link to="/page/3/about-college" className="inline-flex items-center font-bold text-[#003366] hover:text-yellow-600 transition-colors uppercase text-sm tracking-wide">
-              Read More About College <ArrowRight size={16} className="ml-2" />
+              {t.home.readMore} <ArrowRight size={16} className="ml-2" />
             </Link>
           </div>
 
@@ -122,15 +140,16 @@ export default function Home() {
                     <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200" alt="Principal" className="w-full h-full object-cover" />
                   </div>
                   <div className="ml-4 pt-2">
-                    <h3 className="font-bold text-xl text-[#003366]">Principal's Desk</h3>
-                    <p className="text-sm text-yellow-600 font-medium">Dr. M. R. Rajwade</p>
+                    <h3 className="font-bold text-xl text-[#003366]">{t.home.principalTitle}</h3>
+                    <p className="text-xs text-yellow-600 font-semibold">Dr. M. R. Rajwade</p>
+                    <p className="text-xs text-gray-500">Principal, M.Sc., Ph.D.</p>
                   </div>
                 </div>
-                <p className="text-gray-600 text-sm italic mb-4 line-clamp-4 relative bg-gray-50 p-3 rounded border border-gray-100">
+                <p className="text-gray-600 text-sm italic mb-4 leading-relaxed line-clamp-4">
                   "{principalMessage}"
                 </p>
-                <Link to="/page/157/principals-message" className="text-[#003366] text-sm font-bold hover:underline inline-flex items-center uppercase tracking-wide">
-                  Read Full Message <ChevronRight size={14} />
+                <Link to="/page/157/principals-message" className="text-xs font-bold text-[#003366] hover:text-yellow-600 uppercase flex items-center">
+                  Full Message <ChevronRight size={14} className="ml-1" />
                 </Link>
               </div>
             </div>
@@ -281,6 +300,6 @@ export default function Home() {
           100% { transform: translateX(-50%); }
         }
       `}</style>
-    </div>
+    </main>
   );
 }
